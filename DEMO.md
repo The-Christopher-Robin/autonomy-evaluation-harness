@@ -22,7 +22,7 @@ Isolation Forest detector, adaptive defence, and real-time dashboard.
 ## One-Time Setup
 
 ```powershell
-cd autonomy-security-harness
+cd autonomy-evaluation-harness
 python -m venv .venv
 . .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
