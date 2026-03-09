@@ -1,0 +1,34 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Output / generated artifacts
+out/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local documents (not part of the codebase)
+*.pdf
+
+# Jupyter
+.ipynb_checkpoints/
