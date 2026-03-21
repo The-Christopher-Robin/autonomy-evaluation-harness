@@ -51,7 +51,7 @@ positives, latency, block rate, and mission impact.
 
 ```bash
 # clone and set up
-git clone <repo-url> && cd autonomy-security-harness
+git clone <repo-url> && cd autonomy-evaluation-harness
 python -m venv .venv
 # Linux / macOS
 source .venv/bin/activate
@@ -92,7 +92,14 @@ python run_demo.py \
 python run_demo.py --mode all --defense --no-live-plot
 ```
 
-See [DEMO.md](DEMO.md) for the full walkthrough.
+### Randomized attack order and parameters
+
+```bash
+python run_demo.py --mode all --defense --randomize-attacks --random-seed 42
+```
+
+Randomized mode uses **multi-segment** attacks, **inter-episode gaps**, and a **capped**
+moving-average window so live plots show volatile accuracy and anomaly traces. See [DEMO.md](DEMO.md).
 
 ---
 

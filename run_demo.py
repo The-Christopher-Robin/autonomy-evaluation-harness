@@ -5,11 +5,15 @@ Markov model), an optional live dashboard, and then runs each attack script
 in sequence.  All results are written to ``out/``.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
+import random
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import threading
@@ -25,6 +29,19 @@ ATTACK_SCRIPTS = [
     ("Replay pattern attack",  "attacks/replay_pattern_attack.py"),
     ("Command injection burst", "attacks/command_injection_burst.py"),
 ]
+
+# Moving-average window cap during --randomize-attacks so accuracy/anomaly traces
+# react on human time-scales instead of a 1000-msg smoother washing out bursts.
+_RANDOMIZE_MA_CAP = 160
+
+
+@dataclass
+class AttackEpisode:
+    """One catalogue attack, possibly split into several rate/duration segments."""
+
+    name: str
+    script: str
+    segments: list[tuple[float, float]]  # (rate msgs/s, duration s)
 
 
 def build_parser():
@@ -55,6 +72,31 @@ def build_parser():
                    help="Open a live detection dashboard (default: on).")
     p.add_argument("--no-live-plot", action="store_false", dest="live_plot",
                    help="Disable the live dashboard window.")
+
+    p.add_argument(
+        "--randomize-attacks",
+        action="store_true",
+        help=(
+            "Shuffle attack order; randomize per-episode timing; split each episode "
+            "into several segments with varying rates and short pauses; add random "
+            "gaps between episodes. Caps the accuracy moving-average window so plots "
+            "show bursts and recovery instead of a flat line."
+        ),
+    )
+    p.add_argument(
+        "--random-seed",
+        type=int,
+        default=None,
+        help="RNG seed for --randomize-attacks (omit for different schedule each run).",
+    )
+    p.add_argument("--attack-rate-min", type=float, default=None,
+                   help="With --randomize-attacks: min msgs/s (default ~0.35× --attack-rate).")
+    p.add_argument("--attack-rate-max", type=float, default=None,
+                   help="With --randomize-attacks: max msgs/s (default ~1.65× --attack-rate).")
+    p.add_argument("--attack-duration-min", type=float, default=None,
+                   help="With --randomize-attacks: min seconds per episode (default ~0.4× --attack-seconds).")
+    p.add_argument("--attack-duration-max", type=float, default=None,
+                   help="With --randomize-attacks: max seconds per episode (default ~1.6× --attack-seconds).")
     return p
 
 
@@ -71,6 +113,93 @@ def _write_event(path, event):
         fh.write(json.dumps(event) + "\n")
 
 
+def _bounds(args):
+    r = args.attack_rate
+    s = args.attack_seconds
+    r_lo = args.attack_rate_min if args.attack_rate_min is not None else max(1.0, r * 0.35)
+    r_hi = args.attack_rate_max if args.attack_rate_max is not None else max(r_lo, r * 1.65)
+    d_lo = args.attack_duration_min if args.attack_duration_min is not None else max(0.5, s * 0.4)
+    d_hi = args.attack_duration_max if args.attack_duration_max is not None else max(d_lo, s * 1.6)
+    if r_lo > r_hi:
+        r_lo, r_hi = r_hi, r_lo
+    if d_lo > d_hi:
+        d_lo, d_hi = d_hi, d_lo
+    return r_lo, r_hi, d_lo, d_hi
+
+
+def _partition_duration(total: float, n: int, rng: random.Random) -> list[float]:
+    if n <= 1:
+        return [total]
+    cuts = [0.0, total]
+    for _ in range(n - 1):
+        cuts.append(rng.uniform(0.04 * total, 0.96 * total))
+    cuts.sort()
+    parts = [cuts[i + 1] - cuts[i] for i in range(len(cuts) - 1)]
+    parts = [max(p, 0.1) for p in parts]
+    s = sum(parts)
+    return [p / s * total for p in parts]
+
+
+def _sample_segment_rate(r_lo: float, r_hi: float, rng: random.Random) -> float:
+    base = rng.uniform(r_lo, r_hi)
+    roll = rng.random()
+    if roll < 0.38:
+        base *= rng.uniform(0.06, 0.42)
+    elif roll < 0.62:
+        base *= rng.uniform(1.08, 1.45)
+    return max(1.0, base)
+
+
+def _make_rng(args) -> random.Random:
+    if args.random_seed is not None:
+        return random.Random(args.random_seed)
+    return random.Random()
+
+
+def build_episode_schedule(
+    args,
+) -> tuple[list[AttackEpisode], list[float], list[list[float]]]:
+    """Episodes, inter-episode gaps, and precomputed intra-episode pauses (seconds)."""
+    if args.mode not in ("all", "attacks"):
+        return [], [], []
+
+    if not args.randomize_attacks:
+        eps = [
+            AttackEpisode(n, s, [(args.attack_rate, args.attack_seconds)])
+            for n, s in ATTACK_SCRIPTS
+        ]
+        return eps, [], [[] for _ in eps]
+
+    rng = _make_rng(args)
+    r_lo, r_hi, d_lo, d_hi = _bounds(args)
+    rows = list(ATTACK_SCRIPTS)
+    rng.shuffle(rows)
+    episodes: list[AttackEpisode] = []
+    micro_per: list[list[float]] = []
+    for name, script in rows:
+        episode_dur = rng.uniform(d_lo, d_hi)
+        n_seg = rng.randint(5, 13)
+        part_durs = _partition_duration(episode_dur, n_seg, rng)
+        segs = [(_sample_segment_rate(r_lo, r_hi, rng), d) for d in part_durs]
+        episodes.append(AttackEpisode(name, script, segs))
+        micro_per.append(
+            [rng.uniform(0.04, 0.75) for _ in range(len(segs) - 1)]
+        )
+    gaps = [rng.uniform(0.35, 5.5) for _ in range(len(episodes) - 1)]
+    return episodes, gaps, micro_per
+
+
+def _schedule_wall_time(
+    episodes: list[AttackEpisode],
+    inter_gaps: list[float],
+    micro_per: list[list[float]],
+) -> float:
+    seg = sum(d for ep in episodes for _, d in ep.segments)
+    gaps_sum = sum(inter_gaps)
+    micro = sum(sum(m) for m in micro_per)
+    return seg + gaps_sum + micro
+
+
 def main():
     args = build_parser().parse_args()
     base = Path(__file__).parent
@@ -85,14 +214,45 @@ def main():
             fh.write(f"{stamp} {line}\n")
         print(line)
 
-    detector_total = args.baseline_seconds
-    if args.mode in ("all", "attacks"):
-        detector_total += args.attack_seconds * len(ATTACK_SCRIPTS)
-    detector_total += 5
+    episodes, inter_gaps, micro_per = build_episode_schedule(args)
+
+    det_window = args.window
+    if args.randomize_attacks and episodes:
+        if det_window > _RANDOMIZE_MA_CAP:
+            log(
+                f"Randomized run: moving-average window {det_window} -> {_RANDOMIZE_MA_CAP} "
+                f"(faster plot response to traffic bursts)."
+            )
+        det_window = min(det_window, _RANDOMIZE_MA_CAP)
+
+    if args.randomize_attacks and episodes:
+        wall = _schedule_wall_time(episodes, inter_gaps, micro_per)
+        detector_total = args.baseline_seconds + wall + 5
+    elif episodes:
+        detector_total = args.baseline_seconds + sum(
+            d for ep in episodes for _, d in ep.segments
+        ) + 5
+    else:
+        detector_total = args.baseline_seconds + 5
+
+    if args.randomize_attacks and episodes:
+        log(
+            "Volatile schedule (stage 3): shuffled attacks, multi-segment load per episode, "
+            "random inter-episode gaps, per-segment rate jitter."
+        )
+        if args.random_seed is not None:
+            log(f"  random-seed = {args.random_seed} (reproducible)")
+        else:
+            log("  random-seed = (none); schedule differs each run")
+        for ep in episodes:
+            n = len(ep.segments)
+            total_d = sum(d for _, d in ep.segments)
+            rmin = min(r for r, _ in ep.segments)
+            rmax = max(r for r, _ in ep.segments)
+            log(f"  - {ep.name}: {n} segments, {total_d:.1f}s total, rate [{rmin:.0f},{rmax:.0f}] msg/s")
 
     listen_udp = f"0.0.0.0:{_parse_port(args.udp)}"
 
-    # ---- launch live plotter ----
     plotter_proc = None
     if args.live_plot:
         plotter_proc = subprocess.Popen(
@@ -100,7 +260,6 @@ def main():
             cwd=base,
         )
 
-    # ---- detector thread ----
     metrics: dict = {}
     demo_start = time.time()
 
@@ -109,7 +268,7 @@ def main():
             udp=listen_udp,
             train_seconds=args.baseline_seconds,
             total_seconds=detector_total,
-            window_size=args.window,
+            window_size=det_window,
             threshold=args.threshold,
             out_dir=out_dir,
             enable_defense=args.defense,
@@ -118,7 +277,6 @@ def main():
         daemon=True,
     )
 
-    # ---- simulator ----
     log("Starting simulator substitute.")
     sim_proc = subprocess.Popen(
         [sys.executable, "sitl_sim.py",
@@ -133,34 +291,53 @@ def main():
     detector_thread.start()
     time.sleep(args.baseline_seconds)
 
-    # ---- attacks ----
-    if args.mode in ("all", "attacks"):
-        for name, script in ATTACK_SCRIPTS:
-            log(f"Running attack: {name}")
+    if episodes:
+        for ei, ep in enumerate(episodes):
+            if ei > 0 and args.randomize_attacks and inter_gaps:
+                gap = inter_gaps[ei - 1]
+                log(f"Inter-attack gap: {gap:.2f}s (benign traffic only)")
+                time.sleep(gap)
+
+            log(f"Attack episode: {ep.name} ({len(ep.segments)} segments)")
             _write_event(live_path, {
                 "event": "attack_start",
                 "t": round(time.time() - demo_start, 3),
-                "name": name,
+                "name": ep.name,
+                "segments": len(ep.segments),
+                "randomized": args.randomize_attacks,
             })
-            cmd = [
-                sys.executable, script,
-                "--udp",      args.udp,
-                "--rate",     str(args.attack_rate),
-                "--duration", str(args.attack_seconds),
-                "--out-dir",  str(out_dir),
-            ]
-            try:
-                subprocess.run(cmd, cwd=base, check=True)
-            except subprocess.CalledProcessError as exc:
-                log(f"Attack failed: {name} ({exc})")
+
+            micro = micro_per[ei] if ei < len(micro_per) else []
+            for si, (atk_rate, atk_duration) in enumerate(ep.segments):
+                if si > 0:
+                    time.sleep(micro[si - 1])
+                log(f"  segment {si + 1}/{len(ep.segments)}: rate={atk_rate:.1f}/s, {atk_duration:.2f}s")
+                _write_event(live_path, {
+                    "event": "attack_segment",
+                    "t": round(time.time() - demo_start, 3),
+                    "name": ep.name,
+                    "segment": si,
+                    "rate": round(atk_rate, 3),
+                    "duration": round(atk_duration, 3),
+                })
+                cmd = [
+                    sys.executable, ep.script,
+                    "--udp", args.udp,
+                    "--rate", str(atk_rate),
+                    "--duration", str(atk_duration),
+                    "--out-dir", str(out_dir),
+                ]
+                try:
+                    subprocess.run(cmd, cwd=base, check=True)
+                except subprocess.CalledProcessError as exc:
+                    log(f"Attack failed: {ep.name} seg {si} ({exc})")
 
             _write_event(live_path, {
                 "event": "attack_end",
                 "t": round(time.time() - demo_start, 3),
-                "name": name,
+                "name": ep.name,
             })
 
-    # ---- tear-down ----
     detector_thread.join(timeout=detector_total + 5)
 
     log("Stopping simulator substitute.")
@@ -170,7 +347,6 @@ def main():
     except subprocess.TimeoutExpired:
         sim_proc.kill()
 
-    # ---- metrics ----
     metrics_path = out_dir / "metrics.json"
     with metrics_path.open("w", encoding="utf-8") as fh:
         json.dump(metrics, fh, indent=2)

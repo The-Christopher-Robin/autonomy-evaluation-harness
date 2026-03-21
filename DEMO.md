@@ -55,6 +55,32 @@ python run_demo.py --mode all --defense --baseline-seconds 15 --attack-seconds 1
 python run_demo.py --mode all --defense --no-live-plot
 ```
 
+### Randomized attacks (stage 3 — volatile traffic / “messy” plot)
+
+With `--randomize-attacks` the orchestrator does **not** run one constant-rate burst per
+catalogue attack. It **shuffles** attack order, draws a random **episode length** per
+attack, splits each episode into **several subprocess segments** with **independent
+random rates** (including deliberate slow “lulls” and short high-rate bursts), inserts
+**random idle gaps** between episodes (benign traffic only), and **short pauses** between
+segments. The detector’s moving-average accuracy window is **capped at 160 messages** for
+these runs so the dashboard reacts visibly to load changes instead of smoothing them away.
+
+```powershell
+python run_demo.py --mode all --defense --randomize-attacks
+```
+
+Same schedule every time (for screenshots / comparison):
+
+```powershell
+python run_demo.py --mode all --defense --randomize-attacks --random-seed 42
+```
+
+Optional explicit ranges (msgs/s and seconds):
+
+```powershell
+python run_demo.py --mode all --defense --randomize-attacks --random-seed 1 --attack-rate 200 --attack-rate-min 80 --attack-rate-max 320 --attack-seconds 10 --attack-duration-min 4 --attack-duration-max 14
+```
+
 ## Expected Outputs
 
 After running, check `out/`:
