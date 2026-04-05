@@ -8,6 +8,7 @@ in sequence.  All results are written to ``out/``.
 from __future__ import annotations
 
 import argparse
+import csv as csv_mod
 import json
 import random
 import subprocess
@@ -18,7 +19,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 import threading
 
+try:
+    import yaml as _yaml
+except ImportError:
+    _yaml = None
+
 from detector.detector import run_detector
+from framework.metrics import ScenarioResult
+
+try:
+    from detector.visual_grounding import VisualGrounder
+    _HAS_VISUAL = True
+except ImportError:
+    _HAS_VISUAL = False
 
 
 ATTACK_SCRIPTS = [
@@ -90,13 +103,16 @@ def build_parser():
         help="RNG seed for --randomize-attacks (omit for different schedule each run).",
     )
     p.add_argument("--attack-rate-min", type=float, default=None,
-                   help="With --randomize-attacks: min msgs/s (default ~0.35× --attack-rate).")
+                   help="With --randomize-attacks: min msgs/s (default ~0.35x --attack-rate).")
     p.add_argument("--attack-rate-max", type=float, default=None,
-                   help="With --randomize-attacks: max msgs/s (default ~1.65× --attack-rate).")
+                   help="With --randomize-attacks: max msgs/s (default ~1.65x --attack-rate).")
     p.add_argument("--attack-duration-min", type=float, default=None,
-                   help="With --randomize-attacks: min seconds per episode (default ~0.4× --attack-seconds).")
+                   help="With --randomize-attacks: min seconds per episode (default ~0.4x --attack-seconds).")
     p.add_argument("--attack-duration-max", type=float, default=None,
-                   help="With --randomize-attacks: max seconds per episode (default ~1.6× --attack-seconds).")
+                   help="With --randomize-attacks: max seconds per episode (default ~1.6x --attack-seconds).")
+
+    p.add_argument("--config", default=None,
+                   help="Path to YAML configuration file (CLI args override YAML values).")
     return p
 
 
@@ -201,7 +217,25 @@ def _schedule_wall_time(
 
 
 def main():
-    args = build_parser().parse_args()
+    parser = build_parser()
+
+    # Two-pass config loading: YAML sets defaults, CLI args override.
+    pre_args, _ = parser.parse_known_args()
+    if pre_args.config:
+        if _yaml is None:
+            print("pyyaml is required for --config.  pip install pyyaml")
+            sys.exit(1)
+        with open(pre_args.config, encoding="utf-8") as _f:
+            _cfg = _yaml.safe_load(_f) or {}
+        _mapped = {}
+        for _k, _v in _cfg.items():
+            _key = _k.replace("-", "_")
+            if not isinstance(_v, (dict, list)):
+                _mapped[_key] = _v
+        parser.set_defaults(**_mapped)
+
+    args = parser.parse_args()
+
     base = Path(__file__).parent
     out_dir = base / "out"
     out_dir.mkdir(exist_ok=True)
@@ -262,6 +296,7 @@ def main():
 
     metrics: dict = {}
     demo_start = time.time()
+    attack_window_times: list[tuple[str, float, float]] = []
 
     detector_thread = threading.Thread(
         target=lambda: metrics.update(run_detector(
@@ -307,6 +342,8 @@ def main():
                 "randomized": args.randomize_attacks,
             })
 
+            ep_wall_start = time.time() - demo_start
+
             micro = micro_per[ei] if ei < len(micro_per) else []
             for si, (atk_rate, atk_duration) in enumerate(ep.segments):
                 if si > 0:
@@ -332,6 +369,9 @@ def main():
                 except subprocess.CalledProcessError as exc:
                     log(f"Attack failed: {ep.name} seg {si} ({exc})")
 
+            ep_wall_end = time.time() - demo_start
+            attack_window_times.append((ep.name, ep_wall_start, ep_wall_end))
+
             _write_event(live_path, {
                 "event": "attack_end",
                 "t": round(time.time() - demo_start, 3),
@@ -347,10 +387,104 @@ def main():
     except subprocess.TimeoutExpired:
         sim_proc.kill()
 
+    # ---- ScenarioResult: classification metrics ----
+    scenario = ScenarioResult(
+        scenario_name="demo_run",
+        baseline_end=args.baseline_seconds,
+    )
+    for name, start_t, end_t in attack_window_times:
+        scenario.add_attack_window(name=name, start=start_t, end=end_t)
+
+    alerts_path = out_dir / "alerts.log"
+    if alerts_path.exists():
+        for line in alerts_path.read_text(encoding="utf-8").splitlines():
+            parts = line.strip().split(",")
+            if len(parts) >= 2 and parts[1] == "ALERT":
+                try:
+                    scenario.add_alert(float(parts[0]) - demo_start)
+                except ValueError:
+                    pass
+
+    anomaly_threshold = args.defense_threshold if args.defense else 0.5
+    csv_path = out_dir / "detector_accuracy.csv"
+    if csv_path.exists():
+        with csv_path.open(encoding="utf-8") as f:
+            reader = csv_mod.DictReader(f)
+            for row in reader:
+                try:
+                    ts = float(row["timestamp"]) - demo_start
+                    score = float(row["anomaly_score"])
+                    msg_id = int(row["msg_id"])
+                    is_attack = any(
+                        w.start <= ts <= w.end
+                        for w in scenario._attack_windows
+                    )
+                    scenario.add_prediction(msg_id, score < anomaly_threshold, is_attack)
+                    scenario.record_accuracy(ts, float(row["moving_avg"]))
+                except (ValueError, KeyError):
+                    pass
+
+    defense_csv = out_dir / "defense_adaptive.csv"
+    if args.defense and defense_csv.exists():
+        with defense_csv.open(encoding="utf-8") as f:
+            reader = csv_mod.DictReader(f)
+            for row in reader:
+                try:
+                    if row.get("action") == "BLOCK":
+                        ts = float(row["timestamp"]) - demo_start
+                        msg_id = int(row["msg_id"])
+                        is_attack = any(
+                            w.start <= ts <= w.end
+                            for w in scenario._attack_windows
+                        )
+                        scenario.add_prediction(msg_id, True, is_attack)
+                except (ValueError, KeyError):
+                    pass
+
+    scenario_metrics = scenario.compute()
+    scenario_path = out_dir / "scenario_results.json"
+    scenario.save(scenario_path)
+    log(f"Scenario results written to {scenario_path}")
+
+    if scenario_metrics.get("total_predictions", 0) > 0:
+        log("=== Classification Metrics ===")
+        log(f"  Precision : {scenario_metrics.get('precision', 'N/A')}")
+        log(f"  Recall    : {scenario_metrics.get('recall', 'N/A')}")
+        log(f"  F1 Score  : {scenario_metrics.get('f1_score', 'N/A')}")
+        log(f"  TP={scenario_metrics.get('true_positives', 0)}  "
+            f"FP={scenario_metrics.get('false_positives', 0)}  "
+            f"FN={scenario_metrics.get('false_negatives', 0)}  "
+            f"TN={scenario_metrics.get('true_negatives', 0)}")
+
+    # ---- detector metrics.json ----
+    metrics.update({
+        "precision": scenario_metrics.get("precision"),
+        "recall": scenario_metrics.get("recall"),
+        "f1_score": scenario_metrics.get("f1_score"),
+    })
+
     metrics_path = out_dir / "metrics.json"
     with metrics_path.open("w", encoding="utf-8") as fh:
         json.dump(metrics, fh, indent=2)
     log(f"Metrics written to {metrics_path}")
+
+    # ---- Visual grounding analysis ----
+    if _HAS_VISUAL:
+        try:
+            grounder = VisualGrounder()
+            plot_path = out_dir / "accuracy_plot.png"
+            if plot_path.exists():
+                visual_analysis = grounder.analyze_dashboard_frame(plot_path)
+                visual_report = grounder.generate_visual_report(out_dir)
+                visual_path = out_dir / "visual_analysis.json"
+                with visual_path.open("w", encoding="utf-8") as fh:
+                    json.dump({
+                        "dashboard_analysis": visual_analysis,
+                        "visual_report": visual_report,
+                    }, fh, indent=2, default=str)
+                log(f"Visual analysis written to {visual_path}")
+        except Exception as e:
+            log(f"Visual grounding analysis skipped: {e}")
 
     if args.defense:
         log("=== Adaptive Defence Report ===")

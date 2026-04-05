@@ -10,6 +10,7 @@ Metrics follow the taxonomy used in CPS intrusion-detection literature:
 * **Block rate** (fraction of attack traffic stopped by active defence)
 * **Accuracy recovery** (post-defence accuracy minus attack-period minimum)
 * **Mission impact** (fraction of time the system was in a degraded state)
+* **Precision / Recall / F1** (classification metrics for anomaly detection)
 
 Usage::
 
@@ -17,6 +18,7 @@ Usage::
     result.add_attack_window(start=10.0, end=20.0)
     result.add_alert(timestamp=11.2)
     result.add_blocked_message(timestamp=11.3, msg_id=4)
+    result.add_prediction(msg_id=5, predicted_anomaly=True, actual_anomaly=True)
     summary = result.compute()
 """
 
@@ -46,6 +48,7 @@ class ScenarioResult:
     _blocks: list[dict[str, Any]] = field(default_factory=list)
     _attack_windows: list[AttackWindow] = field(default_factory=list)
     _accuracy_series: list[tuple[float, float]] = field(default_factory=list)
+    _predictions: list[dict[str, Any]] = field(default_factory=list)
 
     # -- event recording --------------------------------------------------
 
@@ -60,6 +63,59 @@ class ScenarioResult:
 
     def record_accuracy(self, timestamp: float, accuracy: float) -> None:
         self._accuracy_series.append((timestamp, accuracy))
+
+    def add_prediction(
+        self,
+        message_id: int,
+        predicted_anomaly: bool,
+        actual_anomaly: bool,
+    ) -> None:
+        """Record a single classification prediction for precision/recall/F1."""
+        self._predictions.append({
+            "message_id": message_id,
+            "predicted": predicted_anomaly,
+            "actual": actual_anomaly,
+        })
+
+    # -- classification metrics -------------------------------------------
+
+    def compute_classification_metrics(self) -> dict[str, Any]:
+        """Compute precision, recall, and F1 from recorded predictions."""
+        if not self._predictions:
+            return {
+                "true_positives": 0,
+                "false_positives": 0,
+                "false_negatives": 0,
+                "true_negatives": 0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1_score": 0.0,
+                "total_predictions": 0,
+            }
+
+        tp = sum(1 for p in self._predictions if p["predicted"] and p["actual"])
+        fp = sum(1 for p in self._predictions if p["predicted"] and not p["actual"])
+        fn = sum(1 for p in self._predictions if not p["predicted"] and p["actual"])
+        tn = sum(1 for p in self._predictions if not p["predicted"] and not p["actual"])
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+
+        return {
+            "true_positives": tp,
+            "false_positives": fp,
+            "false_negatives": fn,
+            "true_negatives": tn,
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1_score": round(f1, 4),
+            "total_predictions": len(self._predictions),
+        }
 
     # -- metric computation -----------------------------------------------
 
@@ -130,6 +186,9 @@ class ScenarioResult:
             {"name": w.name, "start": w.start, "end": w.end}
             for w in self._attack_windows
         ]
+
+        # Classification metrics (precision / recall / F1)
+        m.update(self.compute_classification_metrics())
 
         return m
 

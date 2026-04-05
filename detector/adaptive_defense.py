@@ -10,8 +10,10 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from framework.base import BaseDefense
 
-class AdaptiveDefense:
+
+class AdaptiveDefense(BaseDefense):
     def __init__(self, score_threshold=0.3, out_dir="out"):
         self.threshold = score_threshold
         self._out = Path(out_dir)
@@ -28,13 +30,17 @@ class AdaptiveDefense:
                 ["timestamp", "msg_id", "src_system", "anomaly_score", "action", "reason"]
             )
 
-    def evaluate(self, timestamp, msg_id, src_system, anomaly_score):
+    @property
+    def name(self) -> str:
+        return "adaptive_isolation_forest"
+
+    def evaluate(self, timestamp, msg_id, src, anomaly_score):
         """Return *True* if the message should be **blocked**."""
         if anomaly_score < self.threshold:
             self.blocked += 1
             self._by_type[msg_id] += 1
-            self._by_src[src_system] += 1
-            self._log(timestamp, msg_id, src_system, anomaly_score,
+            self._by_src[src] += 1
+            self._log(timestamp, msg_id, src, anomaly_score,
                       "BLOCK", "anomaly_score_below_threshold")
             return True
         self.passed += 1

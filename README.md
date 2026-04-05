@@ -8,7 +8,12 @@ ad-hoc setups, and rarely share a reusable environment.  This project fills
 that gap with an engineering-grade harness that launches missions, schedules
 attacks, runs defences in parallel, logs synchronised events, and
 automatically computes **comparable** metrics such as detection rate, false
-positives, latency, block rate, and mission impact.
+positives, latency, block rate, precision, recall, F1, and mission impact.
+
+The framework supports **automated multi-configuration sweeps** (18+
+configurations, 50+ runs via repeat) for systematically comparing
+detection approaches, and includes **OpenCV-based visual grounding** for
+multimodal dashboard analysis.
 
 ---
 
@@ -31,19 +36,21 @@ positives, latency, block rate, and mission impact.
 └──────────┴──────────────┴────────────────┴───────────────────────┘
          ▼                       ▼                    ▼
     out/attack_*.csv     out/detector_accuracy.csv   out/live_data.jsonl
-                         out/defense_adaptive.csv
-                         out/metrics.json
+                         out/defense_adaptive.csv    out/scenario_results.json
+                         out/metrics.json            out/visual_analysis.json
 ```
 
 ### Key design principles
 
 | Principle | How it is realised |
 |---|---|
-| **Attacks are first-class modules** | Each attack is a standalone script with a uniform CLI (`--udp`, `--rate`, `--duration`, `--out-dir`). New attacks only need to implement `BaseAttack`. |
-| **Defences are pluggable** | The detector and adaptive filter each implement `BaseDetector` / `BaseDefense` ABCs. Swap the Isolation Forest for a neural network or rule engine without touching the orchestrator. |
-| **Synchronised logging** | The orchestrator, detector, and attacks all append to a shared `live_data.jsonl` stream with millisecond-resolution timestamps and event markers. |
-| **Comparable metrics** | `framework/metrics.py` provides `ScenarioResult` — a single class that computes detection rate, false-positive rate, latency, block rate, accuracy recovery, and mission impact from raw event logs. |
-| **Reproducible by default** | Fixed random seeds, deterministic baselines, configurable durations and rates. |
+| **ABC-based extensibility** | All components implement ABCs from `framework/base.py` (`BaseAttack`, `BaseDetector`, `BaseDefense`, `BasePlatform`). Swap implementations without touching the orchestrator. |
+| **Attacks are first-class modules** | Each attack is a standalone script with a uniform CLI (`--udp`, `--rate`, `--duration`, `--out-dir`) **and** a class implementing `BaseAttack`. |
+| **Defences are pluggable** | The detector and adaptive filter implement `BaseDetector` / `BaseDefense` ABCs. Swap the Isolation Forest for a neural network or rule engine without touching the orchestrator. |
+| **Standardised metrics** | `framework/metrics.py` provides `ScenarioResult` — a single class that computes detection rate, false-positive rate, latency, block rate, **precision, recall, F1**, accuracy recovery, and mission impact. |
+| **Multi-config sweeps** | `batch_runner.py` generates 18+ configurations from YAML sweep files and runs them with optional repeats (50+ automated runs). |
+| **OpenCV visual grounding** | `detector/visual_grounding.py` provides multimodal dashboard analysis via contour detection, color thresholding, and frame comparison. |
+| **Reproducible by default** | Fixed random seeds, deterministic baselines, YAML-based configuration, CSV/JSON reports. |
 
 ---
 
@@ -61,17 +68,25 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run with detection only
-
-```bash
-python run_demo.py --mode all
-```
-
-### Run with detection + adaptive ML defence
+### Run a single demo
 
 ```bash
 python run_demo.py --mode all --defense
 ```
+
+### Run with a YAML config file
+
+```bash
+python run_demo.py --config configs/default.yaml
+```
+
+### Batch sweep (18+ configurations)
+
+```bash
+python batch_runner.py --config configs/sweep.yaml --repeat 3 --output-dir batch_results
+```
+
+This generates 18 configurations (3 attack rates × 3 thresholds × 2 defence modes) and runs each 3 times = 54 total runs, producing a `comparison.csv` and `sweep_summary.json`.
 
 ### Customise a scenario
 
@@ -101,35 +116,50 @@ python run_demo.py --mode all --defense --randomize-attacks --random-seed 42
 Randomized mode uses **multi-segment** attacks, **inter-episode gaps**, and a **capped**
 moving-average window so live plots show volatile accuracy and anomaly traces. See [DEMO.md](DEMO.md).
 
+### Run tests
+
+```bash
+python -m pytest tests/ -v
+```
+
 ---
 
 ## Project layout
 
 ```
 .
-├── framework/              # Harness abstractions & utilities
-│   ├── base.py             #   ABCs: BaseAttack, BaseDefense, BaseDetector, BasePlatform
-│   └── metrics.py          #   Standardised ScenarioResult metric computation
+├── framework/                # Harness abstractions & utilities
+│   ├── base.py               #   ABCs: BaseAttack, BaseDefense, BaseDetector, BasePlatform
+│   └── metrics.py            #   ScenarioResult with precision/recall/F1
 │
-├── detector/               # Reference defence implementation
-│   ├── detector.py         #   Main detection loop (Isolation Forest + Markov)
-│   ├── feature_engine.py   #   11-dim sliding-window feature extraction
-│   ├── ml_model.py         #   Isolation Forest anomaly scorer
-│   └── adaptive_defense.py #   Score-threshold adaptive message filter
+├── detector/                 # Reference defence implementation
+│   ├── detector.py           #   Main detection loop (Isolation Forest + Markov)
+│   ├── feature_engine.py     #   11-dim sliding-window feature extraction
+│   ├── ml_model.py           #   IsolationForest anomaly scorer (→ BaseDetector)
+│   ├── adaptive_defense.py   #   Score-threshold adaptive message filter (→ BaseDefense)
+│   └── visual_grounding.py   #   OpenCV-based multimodal dashboard analysis
 │
-├── attacks/                # Attack catalogue (one script per vector)
-│   ├── heartbeat_flood.py
-│   ├── ping_flood.py
-│   ├── param_request_flood.py
-│   ├── mitm_identity_spoof.py
-│   ├── replay_pattern_attack.py
-│   └── command_injection_burst.py
+├── attacks/                  # Attack catalogue (one module per vector)
+│   ├── heartbeat_flood.py    #   → BaseAttack
+│   ├── ping_flood.py         #   → BaseAttack
+│   ├── param_request_flood.py#   → BaseAttack
+│   ├── mitm_identity_spoof.py#   → BaseAttack
+│   ├── replay_pattern_attack.py# → BaseAttack
+│   └── command_injection_burst.py# → BaseAttack
 │
-├── run_demo.py             # Scenario orchestrator
-├── sitl_sim.py             # Platform simulator (MAVLink SITL substitute)
-├── live_plotter.py         # Real-time 3-panel dashboard
+├── configs/                  # YAML configuration files
+│   ├── default.yaml          #   Single baseline config
+│   └── sweep.yaml            #   18-config parameter sweep
+│
+├── tests/                    # Unit tests
+│   └── test_metrics.py       #   Precision/recall/F1, feature engine, ML model
+│
+├── run_demo.py               # Scenario orchestrator
+├── batch_runner.py           # Automated multi-config sweep runner
+├── sitl_sim.py               # Platform simulator (→ BasePlatform)
+├── live_plotter.py           # Real-time 3-panel dashboard
 ├── requirements.txt
-├── DEMO.md                 # Step-by-step demo walkthrough
+├── DEMO.md                   # Step-by-step demo walkthrough
 └── LICENSE
 ```
 
@@ -176,7 +206,45 @@ malicious traffic causes the remaining stream to look more normal, which
 makes the accuracy metric **recover** — the "rising graph" that
 demonstrates active mitigation.
 
-### 5. Live dashboard
+### 5. Classification metrics
+
+After each run, the orchestrator computes standardised classification
+metrics by comparing predictions against ground truth (attack window
+timing):
+
+| Metric | Description |
+|--------|-------------|
+| **Precision** | TP / (TP + FP) — how many flagged messages were actually attacks |
+| **Recall** | TP / (TP + FN) — how many actual attacks were flagged |
+| **F1 Score** | Harmonic mean of precision and recall |
+
+These metrics are written to `out/scenario_results.json` and included in
+`out/metrics.json`.
+
+### 6. Visual grounding (OpenCV)
+
+The `VisualGrounder` module provides multimodal analysis of dashboard
+visualisations:
+
+* **Dashboard frame analysis** — colour thresholding to detect red alert
+  regions, purple anomaly regions, and orange defence markers
+* **Anomaly spike detection** — contour analysis to count anomaly spikes
+  in plot images
+* **Frame comparison** — diff-based change detection between dashboard
+  snapshots
+* **Visual reports** — aggregated analysis of all dashboard frames
+
+### 7. Batch sweeps
+
+The batch runner (`batch_runner.py`) enables systematic evaluation across
+multiple configurations:
+
+* Define parameter sweeps in YAML (e.g., `configs/sweep.yaml`)
+* Automatically generate all combinations (e.g., 6 attacks × 3 thresholds = 18)
+* Run each configuration with optional repeats (`--repeat 3` → 54 runs)
+* Produce a `comparison.csv` and `sweep_summary.json` for cross-config analysis
+
+### 8. Live dashboard
 
 A real-time matplotlib popup window with three panels:
 
@@ -202,25 +270,19 @@ Attack start / end markers are drawn as vertical lines in real time.
 
 ---
 
-## Output metrics
+## Output artefacts
 
-`out/metrics.json` contains, at minimum:
-
-```json
-{
-  "detection_latency_sec": 1.23,
-  "total_alerts": 3,
-  "model_type": "isolation_forest",
-  "total_blocked": 1890,
-  "block_rate": 0.597,
-  "blocked_by_msg_type": {"0": 109, "4": 1049, "21": 723},
-  "blocked_by_src_system": {"250": 13, "251": 1029, "252": 709}
-}
-```
-
-For cross-scenario comparison, use `framework.metrics.ScenarioResult` to
-compute detection rate, false-positive rate, latency, accuracy recovery,
-and mission impact from raw event logs.
+| File | Description |
+|------|-------------|
+| `out/metrics.json` | Detection latency, alert count, precision/recall/F1, defence stats |
+| `out/scenario_results.json` | Full `ScenarioResult` metrics including classification metrics |
+| `out/visual_analysis.json` | OpenCV-based visual grounding analysis of dashboard plots |
+| `out/accuracy_plot.png` | 3-panel detection report (accuracy, anomaly score, defence) |
+| `out/detector_accuracy.csv` | Per-message predictions with anomaly scores |
+| `out/defense_adaptive.csv` | Per-message defence decisions |
+| `out/live_data.jsonl` | Streaming data for the live dashboard |
+| `batch_results/comparison.csv` | Cross-configuration comparison table |
+| `batch_results/sweep_summary.json` | Complete batch run results |
 
 ---
 
@@ -230,9 +292,8 @@ and mission impact from raw event logs.
 
 1. Create `attacks/my_new_attack.py` with the standard CLI flags
    (`--udp`, `--rate`, `--duration`, `--out-dir`).
-2. Register it in the `ATTACK_SCRIPTS` list in `run_demo.py`.
-3. (Optional) Subclass `framework.BaseAttack` for IDE auto-completion
-   and validation.
+2. Add a class inheriting from `framework.BaseAttack` with `execute()` and `stop()`.
+3. Register it in the `ATTACK_SCRIPTS` list in `run_demo.py`.
 
 ### Add a new defence / detector
 
@@ -245,12 +306,17 @@ and mission impact from raw event logs.
 1. Implement `framework.BasePlatform`.
 2. Create a new simulator script and point the orchestrator at it.
 
+### Configure a batch sweep
+
+1. Create a YAML file in `configs/` defining parameters and defaults.
+2. Run `python batch_runner.py --config configs/my_sweep.yaml --repeat 3`.
+3. Results appear in `batch_results/comparison.csv`.
+
 ---
 
 ## Roadmap
 
 - [ ] Containerised execution (Docker Compose for sim + attacks + detector)
-- [ ] Scenario configuration files (YAML/TOML)
 - [ ] Additional detector back-ends (autoencoder, LSTM, rule engine)
 - [ ] Multi-platform support (ROS 2, CAN bus, ADS-B)
 - [ ] Publication-quality LaTeX table / figure export

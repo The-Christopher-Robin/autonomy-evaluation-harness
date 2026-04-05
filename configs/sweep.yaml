@@ -1,0 +1,27 @@
+# Parameter sweep configuration — 18 configurations
+# Usage: python batch_runner.py --config configs/sweep.yaml --repeat 3
+#
+# 3 attack rates  x  3 thresholds  x  2 defense modes = 18 configs
+# With --repeat 3 that produces 54 total runs.
+
+defaults:
+  baseline_seconds: 10
+  attack_seconds: 10
+  sim_rate: 10
+  defense_threshold: 0.3
+  window: 1000
+  mode: all
+  random_seed: 42
+
+parameters:
+  attack_rate:
+    - 100
+    - 200
+    - 300
+  threshold:
+    - 0.85
+    - 0.9
+    - 0.95
+  defense:
+    - true
+    - false

@@ -1,0 +1,13 @@
+# Default single-run configuration
+# Usage: python run_demo.py --config configs/default.yaml
+
+baseline_seconds: 10
+attack_seconds: 10
+attack_rate: 200
+sim_rate: 10
+threshold: 0.9
+defense: true
+defense_threshold: 0.3
+window: 1000
+mode: all
+random_seed: 42

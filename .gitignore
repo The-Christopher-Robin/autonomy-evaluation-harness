@@ -5,6 +5,7 @@ env/
 
 # Output / generated artifacts
 out/
+batch_results/
 *.log
 
 # Python
