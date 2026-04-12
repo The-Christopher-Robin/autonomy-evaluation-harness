@@ -1,0 +1,155 @@
+\section{Framework Description} \label{sec:framework}
+
+This section describes the architecture and methodology used to build the
+red-team vs.\ blue-team evaluation harness.
+
+\subsection{Architecture Overview}
+
+The harness consists of four main components connected through a shared
+UDP channel and a synchronized event log:
+
+\begin{enumerate}
+    \item \textbf{Platform Simulator} (\texttt{sitl\_sim.py}): Generates
+          normal MAVLink telemetry traffic (HEARTBEAT, PING,
+          PARAM\_REQUEST\_LIST, STATUSTEXT) at a configurable rate,
+          simulating a UAV ground-station communication link.
+    \item \textbf{Attack Modules} (\texttt{attacks/}): Six standalone
+          scripts, each implementing a different MAVLink injection attack.
+          All share a uniform command-line interface (\texttt{--udp},
+          \texttt{--rate}, \texttt{--duration}, \texttt{--out-dir}).
+    \item \textbf{Detector and Defense} (\texttt{detector/}): An anomaly
+          detection pipeline that trains on baseline traffic and scores
+          each subsequent message.  Two defense modes are available:
+          Markov-only and Isolation Forest adaptive.
+    \item \textbf{Orchestrator} (\texttt{run\_demo.py}): Launches the
+          simulator, starts the detector, schedules attacks (static or
+          randomized), and writes synchronized logs and metrics.
+\end{enumerate}
+
+All components communicate over UDP on port 14550.  The simulator and
+attack scripts send MAVLink messages to this port; the detector listens
+on the same port.  Attack traffic is mixed with normal simulator traffic
+at the network level, and the detector has no out-of-band knowledge of
+which messages originate from attacks.
+
+\subsection{Abstract Interfaces}
+
+The framework defines four abstract base classes in
+\texttt{framework/base.py}:
+
+\begin{itemize}
+    \item \texttt{BaseAttack}: Requires \texttt{execute(target, duration,
+          rate, out\_dir)} and \texttt{stop()}.
+    \item \texttt{BaseDefense}: Requires \texttt{evaluate(timestamp,
+          msg\_id, src, score)} returning a block decision.
+    \item \texttt{BaseDetector}: Requires \texttt{train(data)} and
+          \texttt{score(observation)}.
+    \item \texttt{BasePlatform}: Requires \texttt{start(target, rate)}
+          and \texttt{stop()}.
+\end{itemize}
+
+New attacks or defenses can be added by subclassing the appropriate base
+and registering with the orchestrator, without modifying any existing code.
+
+\subsection{Attack Catalog}
+
+Six MAVLink injection attacks are implemented, each targeting a different
+aspect of normal traffic behavior:
+
+\begin{table}[t]
+\centering
+\caption{Attack catalog with injection characteristics.}
+\label{tab:attacks}
+\begin{tabular}{lll}
+\toprule
+\textbf{Attack} & \textbf{Vector} & \textbf{Detection signal} \\
+\midrule
+Heartbeat flood     & Volume (high rate)       & Rate spike, distribution shift \\
+Ping flood          & Volume (high rate)       & Rate spike, type ratio change \\
+Param request flood & Volume (high rate)       & Rate spike, type ratio change \\
+MITM identity spoof & Fake source system ID    & New source in feature window \\
+Replay pattern      & Fixed message loop       & Unnatural Markov transitions \\
+Command injection   & Unseen message types     & New type in feature window \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Each attack opens a UDP connection to port 14550, sets a spoofed source
+system ID, and sends well-formed MAVLink messages at the configured rate
+for the configured duration.  The detector cannot distinguish attack
+traffic from simulator traffic by channel; it must rely on statistical
+features.
+
+\subsection{Feature Engineering}
+
+The feature engine (\texttt{detector/feature\_engine.py}) maintains a
+2-second sliding window over the message stream and extracts an
+11-dimensional feature vector per message:
+
+\begin{table}[t]
+\centering
+\caption{Feature vector components (11 dimensions).}
+\label{tab:features}
+\begin{tabular}{rl}
+\toprule
+\# & \textbf{Feature} \\
+\midrule
+1  & Message rate (msgs/s in window) \\
+2  & Message-type entropy \\
+3  & Unique source system count \\
+4  & Per-source message rate \\
+5  & Markov transition probability \\
+6  & Inter-arrival time delta \\
+7--11 & Per-type frequency ratios (HEARTBEAT, PING, \\
+   & PARAM\_REQUEST, COMMAND\_LONG, STATUSTEXT) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Defense Strategies}
+
+Two defense strategies are implemented, both operating on the same
+message stream:
+
+\subsubsection{Markov Transition Defense}
+During baseline, a first-order Markov model learns transition counts
+between consecutive message types.  During monitoring, the transition
+probability from the previous message type to the current one is
+computed.  If this probability falls below a configurable threshold
+(default 0.05), the message is blocked.  This is a pattern-based defense
+that relies on the assumption that attack traffic disrupts normal
+message ordering.
+
+\subsubsection{Isolation Forest Adaptive Defense}
+During baseline, the Isolation Forest is trained on the 11-dimensional
+feature vectors extracted from normal traffic.  During monitoring, each
+message receives an anomaly score between 0 (highly anomalous) and 1
+(normal).  If the score falls below a configurable threshold (default
+0.3), the adaptive defense blocks the message.  This defense operates on
+the full feature space and can detect deviations in rate, source
+identity, message type distribution, and transition patterns
+simultaneously.
+
+\subsection{Randomized Attack Scheduling}
+
+The orchestrator supports a \texttt{--randomize-attacks} mode that
+introduces non-stationary attack traffic:
+\begin{itemize}
+    \item Attack order is shuffled randomly.
+    \item Each attack episode is split into 5--13 segments with
+          independently sampled rates and durations.
+    \item Random idle gaps (benign-only traffic) are inserted between
+          episodes.
+    \item Short pauses are inserted between segments within an episode.
+\end{itemize}
+This mode tests whether defenses generalize beyond fixed attack
+signatures to detect statistical deviation under varying conditions.
+
+\subsection{Metrics}
+
+The \texttt{ScenarioResult} class (\texttt{framework/metrics.py})
+computes standardized metrics from the event log: detection rate (true
+positive rate), false-positive rate, detection latency (time from attack
+onset to first alert), block rate (fraction of attack traffic stopped),
+accuracy recovery (post-defense accuracy minus attack-period minimum),
+and mission impact (fraction of time the system is in a degraded state).

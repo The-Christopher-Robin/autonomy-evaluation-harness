@@ -77,9 +77,13 @@ def build_parser():
                    default="all")
 
     p.add_argument("--defense", action="store_true",
-                   help="Enable adaptive ML defence (Isolation Forest).")
+                   help="(Legacy) Enable adaptive ML defence. Prefer --defense-mode.")
+    p.add_argument("--defense-mode", choices=["none", "markov", "adaptive"],
+                   default="none",
+                   help="Defense strategy: none, markov (transition-probability blocking), "
+                        "or adaptive (Isolation Forest anomaly-score blocking).")
     p.add_argument("--defense-threshold", type=float, default=0.3,
-                   help="Anomaly score below which messages are blocked (0-1).")
+                   help="Score/probability threshold below which messages are blocked.")
 
     p.add_argument("--live-plot", action="store_true", default=True,
                    help="Open a live detection dashboard (default: on).")
@@ -248,6 +252,10 @@ def main():
             fh.write(f"{stamp} {line}\n")
         print(line)
 
+    effective_mode = args.defense_mode
+    if effective_mode == "none" and args.defense:
+        effective_mode = "adaptive"
+
     episodes, inter_gaps, micro_per = build_episode_schedule(args)
 
     det_window = args.window
@@ -306,7 +314,7 @@ def main():
             window_size=det_window,
             threshold=args.threshold,
             out_dir=out_dir,
-            enable_defense=args.defense,
+            defense_mode=effective_mode,
             defense_threshold=args.defense_threshold,
         )),
         daemon=True,
@@ -321,8 +329,12 @@ def main():
     )
 
     log("Starting detector (Isolation Forest + Markov model).")
-    if args.defense:
-        log(f"Adaptive ML defence enabled  (score threshold = {args.defense_threshold}).")
+    mode_desc = {
+        "none": "No defense (detection only).",
+        "markov": f"Markov defense enabled (transition-prob threshold = {args.defense_threshold}).",
+        "adaptive": f"Adaptive ML defence enabled (anomaly-score threshold = {args.defense_threshold}).",
+    }
+    log(mode_desc.get(effective_mode, f"Defense mode: {effective_mode}"))
     detector_thread.start()
     time.sleep(args.baseline_seconds)
 
@@ -486,10 +498,11 @@ def main():
         except Exception as e:
             log(f"Visual grounding analysis skipped: {e}")
 
-    if args.defense:
-        log("=== Adaptive Defence Report ===")
-        log(f"  Model             : Isolation Forest (unsupervised)")
-        log(f"  Score threshold   : {args.defense_threshold}")
+    if effective_mode != "none":
+        model_label = "Markov transition model" if effective_mode == "markov" else "Isolation Forest (unsupervised)"
+        log(f"=== Defence Report ({effective_mode}) ===")
+        log(f"  Model             : {model_label}")
+        log(f"  Threshold         : {args.defense_threshold}")
         log(f"  Total blocked     : {metrics.get('total_blocked', 0)}")
         log(f"  Total passed      : {metrics.get('total_passed', 0)}")
         br = metrics.get("block_rate", 0)
@@ -500,7 +513,8 @@ def main():
         bs = metrics.get("blocked_by_src_system", {})
         if bs:
             log(f"  Blocked by source : {bs}")
-        log("  Defence log       : out/defense_adaptive.csv")
+        csv_name = "defense_markov.csv" if effective_mode == "markov" else "defense_adaptive.csv"
+        log(f"  Defence log       : out/{csv_name}")
         log("  Defence summary   : out/defense_summary.json")
 
     log("Demo complete.")

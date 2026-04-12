@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from .feature_engine import FeatureEngine, FEATURE_NAMES
 from .ml_model import AnomalyDetector
 from .adaptive_defense import AdaptiveDefense
+from .markov_defense import MarkovDefense
 
 
 class MarkovModel:
@@ -58,6 +59,7 @@ def run_detector(
     out_dir,
     enable_defense=False,
     defense_threshold=0.3,
+    defense_mode="none",
 ):
     out_dir = Path(out_dir)
     out_dir.mkdir(exist_ok=True)
@@ -71,11 +73,14 @@ def run_detector(
     feat_engine = FeatureEngine(window_seconds=2.0)
     markov = MarkovModel()
     anomaly = AnomalyDetector(contamination=0.01, n_estimators=150)
-    defense = (
-        AdaptiveDefense(score_threshold=defense_threshold, out_dir=out_dir)
-        if enable_defense
-        else None
-    )
+
+    if defense_mode == "adaptive" or (enable_defense and defense_mode == "none"):
+        defense = AdaptiveDefense(score_threshold=defense_threshold, out_dir=out_dir)
+        defense_mode = "adaptive"
+    elif defense_mode == "markov":
+        defense = MarkovDefense(prob_threshold=defense_threshold, out_dir=out_dir)
+    else:
+        defense = None
 
     conn = mavutil.mavlink_connection(_normalize_udp(udp))
     acc_window: deque = deque(maxlen=window_size)
@@ -130,7 +135,10 @@ def run_detector(
 
             blocked = False
             if defense is not None:
-                blocked = defense.evaluate(now, msg_id, src, a_score)
+                if defense_mode == "markov":
+                    blocked = defense.evaluate(now, msg_id, src, m_prob)
+                else:
+                    blocked = defense.evaluate(now, msg_id, src, a_score)
 
             accuracy = sum(acc_window) / len(acc_window) if acc_window else 1.0
 
@@ -174,7 +182,7 @@ def run_detector(
 
     # ---- post-run outputs ----
     _write_csv(csv_path, rows)
-    _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense)
+    _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense, defense_mode)
 
     if defense:
         defense.write_summary()
@@ -189,6 +197,7 @@ def run_detector(
         "detection_latency_sec": round(detection_latency, 3),
         "total_alerts": alert_count,
         "model_type": "isolation_forest",
+        "defense_mode": defense_mode,
         "features_used": FEATURE_NAMES,
         "baseline_samples": baseline_count,
     }
@@ -217,7 +226,7 @@ def _write_csv(path, rows):
             w.writerow(r)
 
 
-def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense):
+def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense, defense_mode="none"):
     """Three-panel PNG saved after the run completes."""
     if not rows:
         _write_empty_plot(out_dir, threshold, train_seconds)
@@ -227,8 +236,10 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     accuracy = [r[4] for r in rows]
     anom = [r[5] for r in rows]
 
+    mode_labels = {"none": "No Defense", "markov": "Markov Defense", "adaptive": "Isolation Forest + Adaptive Defense"}
+    title = f"Detection Report ({mode_labels.get(defense_mode, defense_mode)})"
     fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
-    fig.suptitle("Detection Report", fontsize=14, fontweight="bold")
+    fig.suptitle(title, fontsize=14, fontweight="bold")
 
     # --- Panel 1: accuracy ---
     ax1 = axes[0]
@@ -256,7 +267,8 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     # --- Panel 3: defense timeline ---
     ax3 = axes[2]
     if defense and defense.blocked > 0:
-        log_path = out_dir / "defense_adaptive.csv"
+        csv_name = "defense_markov.csv" if defense_mode == "markov" else "defense_adaptive.csv"
+        log_path = out_dir / csv_name
         if log_path.exists():
             block_times, cumulative = [], []
             with log_path.open("r", encoding="utf-8") as fh:
@@ -271,7 +283,8 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     ax3.set_ylabel("Cumulative Blocked")
     ax3.set_xlabel("Time (seconds)")
     ax3.legend(loc="upper left", fontsize=8)
-    ax3.set_title("Adaptive Defense Actions", fontsize=10)
+    defense_title = {"none": "No Defense", "markov": "Markov Defense Actions", "adaptive": "Adaptive Defense Actions"}
+    ax3.set_title(defense_title.get(defense_mode, "Defense Actions"), fontsize=10)
     ax3.grid(True, alpha=0.3)
 
     fig.tight_layout()

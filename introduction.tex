@@ -1,0 +1,75 @@
+\section{Introduction} \label{sec:intro}
+
+Security evaluation of AI-based autonomous platforms remains fragmented.
+Most published work tests a single attack vector against a single defense
+in an ad-hoc simulation environment, reports one or two metrics, and
+rarely shares a reusable experimental setup.  As a result, it is
+difficult to compare defense strategies across studies, reproduce
+published results, or extend evaluations to new attack types without
+rebuilding the entire test infrastructure.
+
+Several recent efforts have advanced individual pieces of the puzzle.
+CARE~\cite{care2024} provides a comprehensive cross-evaluation of
+network intrusion detection systems across 15 attacks, 8 defenses, and
+12 detectors, but operates on generic network-traffic datasets with no
+simulator and no mission-level context.
+DYNAMITE~\cite{dynamite2025} demonstrates that no single defense is
+universally effective for IoT traffic and proposes ML-based defense
+selection, yet targets flat network telemetry rather than autonomous
+system command-and-control streams.
+UAVIDS-2025~\cite{uavids2025} contributes a labeled UAV intrusion
+detection dataset, but provides only static records---no orchestrator, no
+pluggable defenses, and no real-time logging.
+MIXED-SENSE~\cite{mixedsense2025} offers a mixed-reality UAV testing
+framework with mission-level feedback, but supports only a single attack
+type (false data injection).
+
+Table~\ref{tab:comparison} summarizes the gap.  No existing framework
+simultaneously supports \emph{multiple} attack types, \emph{multiple}
+defense strategies, a \emph{runnable} orchestrator for autonomous/CPS
+platforms, and \emph{mission-level} impact metrics under identical
+experimental conditions.
+
+\begin{table}[t]
+\centering
+\caption{Comparison of related evaluation frameworks.}
+\label{tab:comparison}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Framework} & \rotatebox{70}{\textbf{Multi-attack}} & \rotatebox{70}{\textbf{Multi-defense}} & \rotatebox{70}{\textbf{CPS/Autonomous}} & \rotatebox{70}{\textbf{Runnable}} & \rotatebox{70}{\textbf{Mission metrics}} \\
+\midrule
+CARE~\cite{care2024}            & \checkmark & \checkmark &            & \checkmark &            \\
+DYNAMITE~\cite{dynamite2025}    & \checkmark & \checkmark &            &            &            \\
+UAVIDS-2025~\cite{uavids2025}   & \checkmark &            & \checkmark &            &            \\
+MIXED-SENSE~\cite{mixedsense2025}& &         \checkmark & \checkmark & \checkmark & partial    \\
+FIMSim~\cite{fimsim}            &            &            & \checkmark & \checkmark &            \\
+\textbf{Ours}                   & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This paper presents an evaluation harness that fills this gap.
+The framework provides:
+\begin{itemize}
+    \item A pluggable architecture with abstract base classes for attacks,
+          defenses, detectors, and platform simulators, allowing new modules
+          to be added without modifying the orchestrator.
+    \item An orchestrator that runs multiple attack types against multiple
+          defense strategies under identical network and timing conditions,
+          with synchronized event logging.
+    \item Standardized, automatically computed metrics: detection rate,
+          false-positive rate, detection latency, block rate, accuracy
+          recovery, and mission impact.
+    \item Support for both static and randomized (non-stationary) attack
+          scheduling to evaluate defense robustness under varying conditions.
+\end{itemize}
+
+We use the harness to compare two defense strategies---a Markov
+transition-probability filter and an Isolation Forest anomaly
+detector with adaptive blocking---against six MAVLink injection attack
+types.  We conduct four experiments of increasing difficulty: static
+attacks without defense, static attacks with Markov defense, randomized
+attacks with Markov defense, and randomized attacks with Isolation Forest
+defense.  The results demonstrate that pattern-based defenses degrade
+significantly under non-stationary attack traffic, while feature-based ML
+defenses maintain effectiveness across attack variations.

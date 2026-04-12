@@ -1,0 +1,197 @@
+\section{Experiments} \label{sec:experiments}
+
+We conduct four experiments of increasing difficulty to evaluate how
+defense strategies perform as attack conditions become less predictable.
+All experiments use the same six MAVLink injection attacks
+(Table~\ref{tab:attacks}), the same platform simulator at 10~msg/s, and
+a 10-second baseline training phase.  Randomized experiments use seed~42
+for reproducibility.
+
+\subsection{Experiment Summary}
+
+Table~\ref{tab:results} summarizes the key metrics across all four
+experiments.
+
+\begin{table}[t]
+\centering
+\caption{Results across the four experimental conditions.}
+\label{tab:results}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \textbf{E1} & \textbf{E2} & \textbf{E3} & \textbf{E4} \\
+\midrule
+Defense mode     & None & Markov & Markov & IF Adaptive \\
+Attack schedule  & Static & Static & Random & Random \\
+Block rate       & 0\%  & 40.3\% & 43.1\% & \textbf{62.5\%} \\
+Messages blocked & 0    & 1{,}398  & 2{,}286  & 2{,}279 \\
+Messages passed  & --   & 2{,}073  & 3{,}020  & 1{,}370 \\
+Detection latency (s) & 41.2 & 60.5 & 3.6 & 5.2 \\
+Total alerts     & 1    & 1    & 1    & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------
+\subsection{E1: Static Attacks, No Defense}
+
+\textbf{Setup.}  Six attacks run sequentially at 200~msg/s for 10
+seconds each, in fixed order.  The detector monitors and logs but does
+not block any traffic.
+
+\textbf{Command.}
+\begin{verbatim}
+python run_demo.py --mode all \
+    --defense-mode none --no-live-plot
+\end{verbatim}
+
+\textbf{Results.}  Figure~\ref{fig:e1} shows the three-panel detection
+report.  The moving-average accuracy drops sharply when each attack
+begins and partially recovers between attacks as normal simulator traffic
+resumes.  The anomaly score drops during attack periods, confirming that
+the Isolation Forest correctly identifies the injected traffic as
+anomalous.  No messages are blocked because no defense is active.
+
+The detection latency of 41.2~seconds reflects the time from the end of
+baseline training to the first alert; the detector correctly identifies
+anomalous conditions but has no mechanism to act on them.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{out/E1/accuracy_plot.png}
+\caption{E1: Static attacks with no defense.  Accuracy drops during each
+attack episode and partially recovers between episodes.}
+\label{fig:e1}
+\end{figure}
+
+% -----------------------------------------------------------------------
+\subsection{E2: Static Attacks, Markov Defense}
+
+\textbf{Setup.}  Same static attack schedule as E1, but with the Markov
+transition-probability defense enabled (threshold = 0.05).
+
+\textbf{Command.}
+\begin{verbatim}
+python run_demo.py --mode all \
+    --defense-mode markov \
+    --defense-threshold 0.05 --no-live-plot
+\end{verbatim}
+
+\textbf{Results.}  Figure~\ref{fig:e2} shows that the Markov defense
+blocks 40.3\% of attack traffic overall.  However, the blocked messages
+are almost entirely concentrated on one attack type: ping floods
+(message type~4) from source~251.  The defense fails to block heartbeat
+floods, MITM identity spoofs, replay patterns, and command injections
+because these attacks either use message types that have legitimate
+Markov transitions or introduce new source IDs that the transition model
+does not track.
+
+This demonstrates the limitation of a pattern-based defense that operates
+on a single feature (message-type ordering): it catches attacks that
+disrupt the learned transition sequence but misses attacks that
+manipulate other traffic dimensions.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{out/E2/accuracy_plot.png}
+\caption{E2: Static attacks with Markov defense.  Partial blocking of
+ping floods, but most attack types pass through.}
+\label{fig:e2}
+\end{figure}
+
+% -----------------------------------------------------------------------
+\subsection{E3: Randomized Attacks, Markov Defense}
+
+\textbf{Setup.}  Attacks are randomized: shuffled order, each episode
+split into 5--13 segments with independently sampled rates (60--300+
+msg/s) and durations, with random idle gaps between episodes.  The
+Markov defense remains active.
+
+\textbf{Command.}
+\begin{verbatim}
+python run_demo.py --mode all \
+    --defense-mode markov \
+    --defense-threshold 0.05 \
+    --randomize-attacks --random-seed 42 \
+    --no-live-plot
+\end{verbatim}
+
+\textbf{Results.}  Figure~\ref{fig:e3} shows a more volatile accuracy
+trace.  The Markov defense achieves a slightly higher overall block rate
+(43.1\%) because the randomized schedule happens to produce more of the
+transitions it can catch.  However, it still blocks only a subset of
+attack types (ping and param-request floods) and misses identity spoofs,
+replay attacks, and command injections.
+
+The accuracy trace is visibly more irregular than E2, reflecting the
+non-stationary attack traffic.  Critically, accuracy does not recover to
+baseline levels between attack episodes because the Markov defense cannot
+prevent the majority of attack traffic from reaching the detector.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{out/E3/accuracy_plot.png}
+\caption{E3: Randomized attacks with Markov defense.  The accuracy trace
+is volatile and the defense blocks only a subset of attack types.}
+\label{fig:e3}
+\end{figure}
+
+% -----------------------------------------------------------------------
+\subsection{E4: Randomized Attacks, Isolation Forest Adaptive Defense}
+
+\textbf{Setup.}  Same randomized attack schedule as E3 (seed~42), but
+with the Isolation Forest adaptive defense replacing the Markov defense
+(anomaly-score threshold = 0.3).
+
+\textbf{Command.}
+\begin{verbatim}
+python run_demo.py --mode all \
+    --defense-mode adaptive \
+    --randomize-attacks --random-seed 42 \
+    --no-live-plot
+\end{verbatim}
+
+\textbf{Results.}  Figure~\ref{fig:e4} shows a substantial improvement.
+The Isolation Forest adaptive defense achieves a 62.5\% block rate,
+blocking traffic across \emph{all} attack types and \emph{all} source
+systems.  Unlike the Markov defense, which only caught transitions it
+had learned, the Isolation Forest operates on the full 11-dimensional
+feature space and detects deviations in rate, source count, entropy,
+inter-arrival timing, and per-type ratios simultaneously.
+
+The accuracy trace shows sharper recovery after attack episodes because
+anomalous messages are blocked before they corrupt the Markov prediction
+window.  The cumulative blocked count increases across all attack
+types, confirming that the defense generalizes to identity spoofs,
+command injections, and replay patterns---attack vectors that the Markov
+defense missed entirely.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{out/E4/accuracy_plot.png}
+\caption{E4: Randomized attacks with Isolation Forest adaptive defense.
+Higher block rate, broader coverage across attack types.}
+\label{fig:e4}
+\end{figure}
+
+% -----------------------------------------------------------------------
+\subsection{Discussion}
+
+The progression from E1 to E4 demonstrates two key findings:
+
+\textbf{1. Pattern-based defenses are brittle.}  The Markov defense
+blocks only attacks that disrupt the learned message-ordering pattern.
+Attacks that inject traffic using legitimate message types at plausible
+rates (e.g., identity spoofing, command injection) evade it entirely.
+
+\textbf{2. Feature-based ML defenses generalize.}  The Isolation Forest,
+trained on an 11-dimensional feature vector capturing rate, entropy,
+source diversity, and transition statistics, detects and blocks attack
+traffic regardless of which specific parameter the attacker varies.
+Under the same randomized attack schedule, the Isolation Forest achieves
+a 62.5\% block rate compared to the Markov defense's 43.1\%, with
+coverage across all six attack types.
+
+These results validate the harness design: by running different defenses
+against the same attack schedule under identical conditions, we can
+make direct, fair comparisons that would not be possible with ad-hoc
+evaluation setups.
