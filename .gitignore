@@ -3,7 +3,7 @@
 venv/
 env/
 
-# Output / generated artifacts
+# Output / generated artifacts (regenerable via run_demo.py)
 out/
 batch_results/
 *.log
@@ -16,20 +16,32 @@ dist/
 build/
 *.egg
 
-# IDE / editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.cursor/
-
 # OS
 Thumbs.db
 .DS_Store
 
 # Local documents (not part of the codebase)
 *.pdf
+REPORT_NOTES.md
+Overleaf/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Test cache
+.pytest_cache/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.out
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb

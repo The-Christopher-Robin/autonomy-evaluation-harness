@@ -12,8 +12,10 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from framework.base import BaseDefense
 
-class MarkovDefense:
+
+class MarkovDefense(BaseDefense):
     def __init__(self, prob_threshold=0.05, out_dir="out"):
         self.threshold = prob_threshold
         self._out = Path(out_dir)
@@ -30,13 +32,22 @@ class MarkovDefense:
                 ["timestamp", "msg_id", "src_system", "transition_prob", "action", "reason"]
             )
 
-    def evaluate(self, timestamp, msg_id, src_system, transition_prob):
-        """Return *True* if the message should be **blocked**."""
-        if transition_prob < self.threshold:
+    @property
+    def name(self) -> str:
+        return "markov_transition"
+
+    def evaluate(self, timestamp, msg_id, src, anomaly_score):
+        """Return *True* if the message should be **blocked**.
+
+        For MarkovDefense the ``anomaly_score`` parameter carries the
+        Markov transition probability (lower means more anomalous),
+        keeping the call-site uniform across defence strategies.
+        """
+        if anomaly_score < self.threshold:
             self.blocked += 1
             self._by_type[msg_id] += 1
-            self._by_src[src_system] += 1
-            self._log(timestamp, msg_id, src_system, transition_prob,
+            self._by_src[src] += 1
+            self._log(timestamp, msg_id, src, anomaly_score,
                       "BLOCK", "transition_prob_below_threshold")
             return True
         self.passed += 1

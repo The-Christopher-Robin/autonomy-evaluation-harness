@@ -68,35 +68,15 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
-    conn = mavutil.mavlink_connection(f"udpout:{args.udp}")
-    conn.mav.srcSystem = 1
-    conn.mav.srcComponent = 1
-
-    rate = max(args.rate, 1.0)
-    period = 1.0 / rate
-    seq = 0
-
-    while True:
-        conn.mav.heartbeat_send(
-            mavutil.mavlink.MAV_TYPE_QUADROTOR,
-            mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA,
-            0,
-            0,
-            mavutil.mavlink.MAV_STATE_ACTIVE,
-            MAVLINK_VERSION,
-        )
-
-        if seq % 5 == 0:
-            conn.mav.ping_send(int(time.time() * 1e6), seq, 1, 1)
-
-        if seq % 7 == 0:
-            conn.mav.param_request_list_send(1, 1)
-
-        if seq % 11 == 0:
-            conn.mav.statustext_send(mavutil.mavlink.MAV_SEVERITY_INFO, b"SIM OK")
-
-        seq += 1
-        time.sleep(period)
+    sim = SITLSimulator()
+    sim.start(target=args.udp, rate=args.rate)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sim.stop()
 
 
 if __name__ == "__main__":
