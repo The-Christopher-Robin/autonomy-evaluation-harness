@@ -24,8 +24,10 @@ try:
 except ImportError:
     _yaml = None
 
+from attacks import ATTACK_REGISTRY
 from detector.detector import run_detector
 from framework.metrics import ScenarioResult
+from sitl_sim import SITLSimulator
 
 try:
     from detector.visual_grounding import VisualGrounder
@@ -34,14 +36,7 @@ except ImportError:
     _HAS_VISUAL = False
 
 
-ATTACK_SCRIPTS = [
-    ("Heartbeat flood",        "attacks/heartbeat_flood.py"),
-    ("Ping flood",             "attacks/ping_flood.py"),
-    ("Param request flood",    "attacks/param_request_flood.py"),
-    ("MITM identity spoof",    "attacks/mitm_identity_spoof.py"),
-    ("Replay pattern attack",  "attacks/replay_pattern_attack.py"),
-    ("Command injection burst", "attacks/command_injection_burst.py"),
-]
+ATTACK_CATALOGUE = [(cls().name, cls) for cls in ATTACK_REGISTRY]
 
 # Moving-average window cap during --randomize-attacks so accuracy/anomaly traces
 # react on human time-scales instead of a 1000-msg smoother washing out bursts.
@@ -53,7 +48,7 @@ class AttackEpisode:
     """One catalogue attack, possibly split into several rate/duration segments."""
 
     name: str
-    script: str
+    attack_cls: type
     segments: list[tuple[float, float]]  # (rate msgs/s, duration s)
 
 
@@ -185,23 +180,23 @@ def build_episode_schedule(
 
     if not args.randomize_attacks:
         eps = [
-            AttackEpisode(n, s, [(args.attack_rate, args.attack_seconds)])
-            for n, s in ATTACK_SCRIPTS
+            AttackEpisode(n, cls, [(args.attack_rate, args.attack_seconds)])
+            for n, cls in ATTACK_CATALOGUE
         ]
         return eps, [], [[] for _ in eps]
 
     rng = _make_rng(args)
     r_lo, r_hi, d_lo, d_hi = _bounds(args)
-    rows = list(ATTACK_SCRIPTS)
+    rows = list(ATTACK_CATALOGUE)
     rng.shuffle(rows)
     episodes: list[AttackEpisode] = []
     micro_per: list[list[float]] = []
-    for name, script in rows:
+    for name, cls in rows:
         episode_dur = rng.uniform(d_lo, d_hi)
         n_seg = rng.randint(5, 13)
         part_durs = _partition_duration(episode_dur, n_seg, rng)
         segs = [(_sample_segment_rate(r_lo, r_hi, rng), d) for d in part_durs]
-        episodes.append(AttackEpisode(name, script, segs))
+        episodes.append(AttackEpisode(name, cls, segs))
         micro_per.append(
             [rng.uniform(0.04, 0.75) for _ in range(len(segs) - 1)]
         )
@@ -321,12 +316,8 @@ def main():
     )
 
     log("Starting simulator substitute.")
-    sim_proc = subprocess.Popen(
-        [sys.executable, "sitl_sim.py",
-         "--udp", args.udp,
-         "--rate", str(args.sim_rate)],
-        cwd=base,
-    )
+    simulator = SITLSimulator()
+    simulator.start(target=args.udp, rate=args.sim_rate)
 
     log("Starting detector (Isolation Forest + Markov model).")
     mode_desc = {
@@ -369,16 +360,15 @@ def main():
                     "rate": round(atk_rate, 3),
                     "duration": round(atk_duration, 3),
                 })
-                cmd = [
-                    sys.executable, ep.script,
-                    "--udp", args.udp,
-                    "--rate", str(atk_rate),
-                    "--duration", str(atk_duration),
-                    "--out-dir", str(out_dir),
-                ]
                 try:
-                    subprocess.run(cmd, cwd=base, check=True)
-                except subprocess.CalledProcessError as exc:
+                    attack = ep.attack_cls()
+                    attack.execute(
+                        target=args.udp,
+                        duration=atk_duration,
+                        rate=atk_rate,
+                        out_dir=str(out_dir),
+                    )
+                except Exception as exc:
                     log(f"Attack failed: {ep.name} seg {si} ({exc})")
 
             ep_wall_end = time.time() - demo_start
@@ -393,11 +383,7 @@ def main():
     detector_thread.join(timeout=detector_total + 5)
 
     log("Stopping simulator substitute.")
-    sim_proc.terminate()
-    try:
-        sim_proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        sim_proc.kill()
+    simulator.stop()
 
     # ---- ScenarioResult: classification metrics ----
     scenario = ScenarioResult(
@@ -520,7 +506,7 @@ def main():
     log("Demo complete.")
 
     if plotter_proc:
-        log("Live dashboard still open — close the window to exit.")
+        log("Live dashboard still open -- close the window to exit.")
         try:
             plotter_proc.wait(timeout=300)
         except subprocess.TimeoutExpired:
