@@ -71,8 +71,6 @@ def build_parser():
     p.add_argument("--mode", choices=["all", "baseline", "attacks"],
                    default="all")
 
-    p.add_argument("--defense", action="store_true",
-                   help="(Legacy) Enable adaptive ML defence. Prefer --defense-mode.")
     p.add_argument("--defense-mode", choices=["none", "markov", "adaptive"],
                    default="none",
                    help="Defense strategy: none, markov (transition-probability blocking), "
@@ -248,8 +246,6 @@ def main():
         print(line)
 
     effective_mode = args.defense_mode
-    if effective_mode == "none" and args.defense:
-        effective_mode = "adaptive"
 
     episodes, inter_gaps, micro_per = build_episode_schedule(args)
 
@@ -403,7 +399,7 @@ def main():
                 except ValueError:
                     pass
 
-    anomaly_threshold = args.defense_threshold if args.defense else 0.5
+    anomaly_threshold = args.defense_threshold if effective_mode != "none" else 0.5
     csv_path = out_dir / "detector_accuracy.csv"
     if csv_path.exists():
         with csv_path.open(encoding="utf-8") as f:
@@ -422,8 +418,9 @@ def main():
                 except (ValueError, KeyError):
                     pass
 
-    defense_csv = out_dir / "defense_adaptive.csv"
-    if args.defense and defense_csv.exists():
+    defense_csv_name = "defense_markov.csv" if effective_mode == "markov" else "defense_adaptive.csv"
+    defense_csv = out_dir / defense_csv_name
+    if effective_mode != "none" and defense_csv.exists():
         with defense_csv.open(encoding="utf-8") as f:
             reader = csv_mod.DictReader(f)
             for row in reader:

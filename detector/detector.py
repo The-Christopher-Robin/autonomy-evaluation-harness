@@ -57,7 +57,6 @@ def run_detector(
     window_size,
     threshold,
     out_dir,
-    enable_defense=False,
     defense_threshold=0.3,
     defense_mode="none",
 ):
@@ -74,9 +73,8 @@ def run_detector(
     markov = MarkovModel()
     anomaly = AnomalyDetector(contamination=0.01, n_estimators=150)
 
-    if defense_mode == "adaptive" or (enable_defense and defense_mode == "none"):
+    if defense_mode == "adaptive":
         defense = AdaptiveDefense(score_threshold=defense_threshold, out_dir=out_dir)
-        defense_mode = "adaptive"
     elif defense_mode == "markov":
         defense = MarkovDefense(prob_threshold=defense_threshold, out_dir=out_dir)
     else:
@@ -135,10 +133,8 @@ def run_detector(
 
             blocked = False
             if defense is not None:
-                if defense_mode == "markov":
-                    blocked = defense.evaluate(now, msg_id, src, m_prob)
-                else:
-                    blocked = defense.evaluate(now, msg_id, src, a_score)
+                score = m_prob if defense_mode == "markov" else a_score
+                blocked = defense.evaluate(now, msg_id, src, score)
 
             accuracy = sum(acc_window) / len(acc_window) if acc_window else 1.0
 
