@@ -4,20 +4,21 @@ This paper presented a Red-Team vs.\ Blue-Team Evaluation Framework for systemat
 The framework introduces a centralised orchestrator, a component absent from prior CPS security evaluation tools, that automates attack scheduling, defence activation, synchronised logging, and standardised metric computation.
 
 We formally defined the red-team vs.\ blue-team evaluation problem and implemented a plug-in architecture with abstract base classes for all components.
-Through four experiments, including multi-seed repetition with statistical testing and a rate-threshold baseline comparison, we demonstrated that:
+Through four experiments, each repeated across 20 random seeds with statistical testing and a rate-threshold baseline comparison, we demonstrated that:
 \begin{enumerate}
     \item Passive detection alone (E1) achieves high recall (99.2\%) but provides no mission protection, resulting in 62.5\% mission degradation.
     \item The Markov transition-probability defence (E2) blocks 52.4\% of static attack traffic and reduces mission impact to 13.9\%.
-    \item Randomised, variable-rate attack scheduling (E3) degrades the Markov defence, revealing the fragility of pattern-only defences. Multi-seed analysis (20 seeds) with Mann-Whitney U testing confirms this degradation is statistically significant.
-    \item Both the Markov and Isolation Forest defences outperform the rate-threshold baseline across all metrics, confirming that multi-feature approaches add measurable value over simple heuristics.
+    \item Randomised, variable-rate attack scheduling (E3) degrades the Markov defence (F1 from 0.982 to 0.567), revealing the fragility of pattern-only defences. Mann-Whitney U testing across 20 seeds confirms this degradation is statistically significant ($p < 0.001$).
+    \item The Isolation Forest defence (E4) recovers performance under randomised attacks, achieving F1 = 0.822 and 81.2\% block rate, with statistically significant improvements over the Markov defence ($p < 0.001$).
+    \item Both multi-feature defences outperform the rate-threshold baseline in precision, confirming that learned models add measurable value over simple heuristics.
 \end{enumerate}
 
 These findings establish three important results for the CPS security community:
 first, that \emph{orchestrated multi-attack evaluation} reveals defence weaknesses invisible in single-attack studies,
-second, that \emph{mission-level metrics} provide critical insight beyond traditional classification accuracy,
-and third, that the observed differences are \emph{statistically significant} across diverse attack schedules.
+second, that \emph{multi-feature anomaly detection} (Isolation Forest) outperforms single-signal approaches (Markov) under adversarial scheduling,
+and third, that the observed differences are \emph{statistically significant} across diverse attack schedules ($p < 0.001$).
 
 The framework's plug-in architecture (abstract base classes for attacks, defences, detectors, and platforms) enables future researchers to evaluate new defence mechanisms without rebuilding the experimental infrastructure.
 All code, configurations, and experimental results are publicly available for reproducibility.
 
-Future work will complete the Isolation Forest adaptive defence evaluation (E4), integrate high-fidelity simulation (AirSim/Gazebo) for physical mission-impact measurement, and extend the attack catalogue to include sensor-layer and adversarial-ML attacks targeting learned controllers.
+Future work will integrate high-fidelity simulation (AirSim/Gazebo) for physical mission-impact measurement, implement adaptive threshold learning, and extend the attack catalogue to include sensor-layer and adversarial-ML attacks targeting learned controllers.

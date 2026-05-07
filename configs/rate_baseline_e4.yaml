@@ -1,0 +1,15 @@
+# E4 rate-baseline: randomized attacks with rate-threshold defense
+# Single run with seed 42 for direct comparison against adaptive E4.
+
+defaults:
+  baseline_seconds: 5
+  attack_seconds: 5
+  attack_rate: 200
+  sim_rate: 10
+  threshold: 0.9
+  window: 100
+  mode: all
+  defense_mode: rate
+  defense_threshold: 2.0
+  randomize_attacks: true
+  random_seed: 42

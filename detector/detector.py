@@ -244,7 +244,7 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     accuracy = [r[4] for r in rows]
     anom = [r[5] for r in rows]
 
-    mode_labels = {"none": "No Defense", "markov": "Markov Defense", "adaptive": "Isolation Forest + Adaptive Defense"}
+    mode_labels = {"none": "No Defense", "markov": "Markov Defense", "adaptive": "Isolation Forest + Adaptive Defense", "rate": "Rate-Threshold Baseline"}
     title = f"Detection Report ({mode_labels.get(defense_mode, defense_mode)})"
     fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
     fig.suptitle(title, fontsize=14, fontweight="bold")
@@ -292,7 +292,7 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     ax3.set_ylabel("Cumulative Blocked")
     ax3.set_xlabel("Time (seconds)")
     ax3.legend(loc="upper left", fontsize=8)
-    defense_title = {"none": "No Defense", "markov": "Markov Defense Actions", "adaptive": "Adaptive Defense Actions"}
+    defense_title = {"none": "No Defense", "markov": "Markov Defense Actions", "adaptive": "Adaptive Defense Actions", "rate": "Rate-Threshold Actions"}
     ax3.set_title(defense_title.get(defense_mode, "Defense Actions"), fontsize=10)
     ax3.grid(True, alpha=0.3)
 

@@ -76,8 +76,9 @@ def build_parser():
                    help="Defense strategy: none, markov (transition-probability blocking), "
                         "adaptive (Isolation Forest anomaly-score blocking), "
                         "or rate (simple rate-threshold baseline).")
-    p.add_argument("--defense-threshold", type=float, default=0.3,
-                   help="Score/probability threshold below which messages are blocked.")
+    p.add_argument("--defense-threshold", type=float, default=None,
+                   help="Score/probability threshold below which messages are blocked. "
+                        "Defaults: markov=0.05, adaptive=0.5, rate=2.0.")
 
     p.add_argument("--live-plot", action="store_true", default=True,
                    help="Open a live detection dashboard (default: on).")
@@ -248,8 +249,9 @@ def main():
 
     effective_mode = args.defense_mode
 
-    if effective_mode == "rate" and args.defense_threshold == 0.3:
-        args.defense_threshold = 2.0
+    if args.defense_threshold is None:
+        _defaults = {"markov": 0.05, "adaptive": 0.5, "rate": 2.0, "none": 0.3}
+        args.defense_threshold = _defaults.get(effective_mode, 0.3)
 
     episodes, inter_gaps, micro_per = build_episode_schedule(args)
 

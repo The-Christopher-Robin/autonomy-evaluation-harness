@@ -5,9 +5,14 @@
 The experimental results reveal several important observations about CPS security evaluation:
 
 \textbf{Pattern-based defences are fragile under adversarial scheduling.}
-The Markov defence achieved 52.4\% block rate against static attacks (E2) but only 35.4\% against the same attacks delivered with randomised timing and intensity (E3).
-This 17-percentage-point degradation demonstrates that attackers who vary their behaviour, even without changing the attack type, can significantly reduce defence effectiveness.
+The Markov defence achieved 52.4\% block rate against static attacks (E2) but only 44.2\% (mean across 20 seeds) against the same attacks delivered with randomised timing and intensity (E3), with F1 dropping from 0.982 to 0.567.
+This degradation demonstrates that attackers who vary their behaviour, even without changing the attack type, can reduce defence effectiveness.
 This finding aligns with Sommer and Paxson's observation that closed-world evaluation overstates IDS performance~\cite{sommer2010closedworld}.
+
+\textbf{Multi-feature defences recover under adversarial scheduling.}
+The Isolation Forest defence (E4), using all 11 features, achieved an 81.2\% mean block rate and F1 = 0.822 against the same randomised attacks that degraded the Markov defence to F1 = 0.567.
+The improvement is statistically significant ($p < 0.001$ for recall, F1, and block rate).
+This confirms that combining rate, entropy, source diversity, and sequential features provides greater resilience than relying on a single signal (transition probability).
 
 \textbf{Detection is necessary but insufficient.}
 E1 achieved 99.2\% recall (the detector correctly identified virtually all attack messages) yet the mission impact ratio reached 62.5\%.
@@ -53,14 +58,12 @@ The 5-second baseline phase produces approximately 69 training samples, which li
 Longer baselines may improve defence precision at the cost of extended setup time.
 
 \textbf{Threshold sensitivity.}
-All three defences depend on manually chosen thresholds ($\tau_M = 0.05$ for Markov, $\tau_A = 0.3$ for Isolation Forest, $k = 2$ for rate-threshold).
+All three defences depend on manually chosen thresholds ($\tau_M = 0.05$ for Markov, $\tau_A = 0.5$ for Isolation Forest, $k = 2$ for rate-threshold).
 Systematic threshold optimisation (e.g., via ROC analysis on a held-out validation set) is left for future work.
 
 \subsection{Future Work}
 
 \begin{enumerate}
-    \item \textbf{Complete E4 (Isolation Forest defence):} Finalise parameter tuning and evaluate against randomised attacks to validate the hypothesis that multi-feature defences outperform pattern-only approaches.
-
     \item \textbf{High-fidelity simulation integration:} Connect the framework to AirSim~\cite{shah2018airsim} or Gazebo~\cite{koenig2004gazebo}-based UAV missions to measure physical-level mission impact (trajectory deviation, collision avoidance degradation).
 
     \item \textbf{Adaptive threshold learning:} Implement online threshold adjustment based on observed false-positive rates during the first minutes of monitoring.

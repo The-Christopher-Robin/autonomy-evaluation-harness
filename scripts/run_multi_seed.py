@@ -57,7 +57,7 @@ def run_seed(
     elif defense_mode == "rate":
         cmd.extend(["--defense-threshold", "2.0"])
     elif defense_mode == "adaptive":
-        cmd.extend(["--defense-threshold", "0.3"])
+        cmd.extend(["--defense-threshold", "0.5"])
 
     if randomize:
         cmd.append("--randomize-attacks")

@@ -49,8 +49,9 @@ Evaluating the security of autonomous platforms typically involves testing one a
 We present a reusable, orchestrator-driven evaluation framework that systematically runs multiple red-team attacks against multiple blue-team defences under identical conditions over the MAVLink communication protocol.
 We formally define the red-team vs.\ blue-team evaluation problem (platform, attack catalogue, schedule, detector, defence, orchestrator, and metric vector) and introduce a centralised orchestrator, absent from prior tools, that automates attack scheduling (static or randomised), defence activation, synchronised logging, and standardised metric computation.
 We implement six parameterised MAVLink attacks and three defence strategies (Markov transition-probability filter, Isolation Forest anomaly detector, and a rate-threshold baseline) built on an 11-dimensional feature extraction pipeline.
-Experiments repeated across 20 random seeds with statistical testing demonstrate that the Markov defence blocks 52.4\% of static attack traffic but degrades under randomised scheduling, revealing the fragility of pattern-based defences.
-Both the Markov and Isolation Forest defences outperform the rate-threshold baseline across all metrics, confirming that multi-feature approaches add measurable value over simple heuristics.
+Four experiments, repeated across 20 random seeds with statistical testing, demonstrate that the Markov defence blocks 52.4\% of static attack traffic but degrades to 44.2\% under randomised scheduling (F1 = 0.567), revealing the fragility of pattern-based defences.
+The Isolation Forest defence recovers performance under the same randomised conditions, achieving an 81.2\% block rate and F1 = 0.822 ($p < 0.001$ vs.\ Markov).
+Both multi-feature defences outperform the rate-threshold baseline in precision, confirming that combining rate, entropy, and sequential features adds measurable value over simple heuristics.
 All code and experimental artifacts are publicly available for reproducibility.
 \end{abstract}
 
