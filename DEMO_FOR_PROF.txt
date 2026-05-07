@@ -1,0 +1,247 @@
+=====================================================================
+  STEP-BY-STEP DEMO GUIDE - Show Professor on Monday
+=====================================================================
+
+SETUP (do this once before the demo)
+-------------------------------------
+
+1. Open PowerShell, navigate to the project:
+
+   cd "D:\DATA\Chris\Masters\UW\Class_work\Winter 26\TCSS 600 - Dr_Torre\Project\autonomy-evaluation-harness"
+
+2. Activate the virtual environment:
+
+   .venv\Scripts\Activate.ps1
+
+   (You should see (.venv) in your prompt)
+
+3. Make sure dependencies are installed:
+
+   pip install -r requirements.txt
+
+4. Quick sanity check (run the tests):
+
+   python -m pytest tests/test_integration.py -v
+
+   You should see "16 passed". This proves the plugin architecture works:
+   all 6 attacks, 3 defenses, simulator, and detector pass their interface checks.
+
+
+=====================================================================
+EXPERIMENT 1: Static attacks, NO defense
+=====================================================================
+
+What it shows: The system detects attacks but does nothing about them.
+               Accuracy drops to near zero and stays there.
+
+Command:
+
+   python run_demo.py --mode all --defense-mode none --baseline-seconds 5 --attack-seconds 5 --attack-rate 200 --window 100
+
+What to say:
+   "This is our baseline. The detector sees the attacks (the anomaly 
+   score drops to zero in panel 2) but since no defense is active, 
+   accuracy stays low the entire time. The system is fully compromised."
+
+What to look at:
+   - A live plot window opens with 3 panels
+   - Panel 1: accuracy drops from 1.0 to ~0.04 during attacks
+   - Panel 2: anomaly score drops to near 0 during attacks
+   - Panel 3: empty (no blocking)
+   - Terminal prints precision ~0.97, recall ~0.99, block rate 0%
+
+Output files saved to: out/
+   - accuracy_plot.png  (the 3-panel graph)
+   - metrics.json       (all the numbers)
+   - scenario_results.json (detailed classification)
+
+
+=====================================================================
+EXPERIMENT 2: Static attacks, MARKOV defense
+=====================================================================
+
+What it shows: The Markov defense blocks messages with unusual 
+               type transitions. Accuracy partially recovers.
+
+Command:
+
+   python run_demo.py --mode all --defense-mode markov --defense-threshold 0.05 --baseline-seconds 5 --attack-seconds 5 --attack-rate 200 --window 100
+
+What to say:
+   "Now we turn on the Markov defense. It learns which message type
+   follows which during the 5-second baseline, then blocks messages
+   whose transitions have probability below 5%. You can see accuracy
+   only drops to about 0.49 instead of 0.04, and panel 3 shows the
+   cumulative blocked messages climbing during each attack."
+
+What to look at:
+   - Panel 1: accuracy dips to ~0.49 (much better than E1's 0.04)
+   - Panel 3: shows ~1280 blocked messages
+   - Terminal prints block rate ~52%, precision ~0.98
+
+
+=====================================================================
+EXPERIMENT 3: RANDOMIZED attacks, Markov defense
+=====================================================================
+
+What it shows: When attacks are randomized (shuffled order, variable
+               rates, random pauses), the Markov defense struggles.
+
+Command:
+
+   python run_demo.py --mode all --defense-mode markov --defense-threshold 0.05 --baseline-seconds 5 --attack-seconds 5 --attack-rate 200 --window 100 --randomize-attacks --random-seed 42
+
+What to say:
+   "Now we simulate a smarter attacker. Instead of fixed-rate attacks
+   in a fixed order, the attacks are shuffled, each one is split into
+   5-13 segments with random rates from 19 to 443 messages per second,
+   and there are random pauses between them. The Markov defense drops
+   from 52% block rate to about 35%. The accuracy oscillates wildly
+   because the attack pattern keeps changing. This shows that a 
+   pattern-based defense is fragile against a real adversary."
+
+What to look at:
+   - Panel 1: accuracy oscillates rapidly instead of smooth dips
+   - Panel 3: fewer blocks than E2
+   - Terminal prints block rate ~35%, precision drops to ~0.84
+
+NOTE: We repeated this with 20 different random seeds and got a mean
+block rate of 44.2% +/- 15.8%, confirming it's not just one bad seed.
+
+
+=====================================================================
+EXPERIMENT 4: RANDOMIZED attacks, ISOLATION FOREST defense
+=====================================================================
+
+What it shows: The Isolation Forest uses all 11 features (rate, entropy,
+               source count, timing, type ratios) instead of just 
+               message transitions. It handles randomized attacks much 
+               better than Markov.
+
+Command:
+
+   python run_demo.py --mode all --defense-mode adaptive --baseline-seconds 5 --attack-seconds 5 --attack-rate 200 --window 100 --randomize-attacks --random-seed 42
+
+What to say:
+   "This is the same randomized attack schedule as E3, but now we use
+   the Isolation Forest defense. It considers all 11 features at once:
+   message rate, entropy, source diversity, Markov probability, timing,
+   and per-type frequency ratios. The block rate jumps from 35% to 69%
+   on this seed, and across 20 seeds it averages 81%. The F1 score
+   goes from 0.567 to 0.822. This improvement is statistically 
+   significant with p < 0.001 on the Mann-Whitney U test."
+
+What to look at:
+   - Panel 1: accuracy still oscillates but generally higher
+   - Panel 3: many more blocks than E3
+   - Terminal prints block rate ~69%, total blocked ~2867
+   - The defense blocks messages from ALL attack sources, not just 
+     the ones with weird transitions
+
+
+=====================================================================
+BONUS: Rate-threshold baseline comparison
+=====================================================================
+
+What it shows: A simple "block when rate is too high" defense.
+               High block rate but also blocks lots of normal traffic.
+
+Command:
+
+   python run_demo.py --mode all --defense-mode rate --baseline-seconds 5 --attack-seconds 5 --attack-rate 200 --window 100 --randomize-attacks --random-seed 42
+
+What to say:
+   "This is the simplest possible defense: just block everything when
+   the message rate exceeds twice the normal rate. It blocks 90% of 
+   traffic, but its precision is only 81% because it can't tell the
+   difference between a normal message that arrives during a burst 
+   and an actual attack message. The Isolation Forest has higher 
+   precision because it looks at 11 features, not just rate."
+
+
+=====================================================================
+RUNNING THE TESTS (to show code quality)
+=====================================================================
+
+   python -m pytest tests/test_integration.py -v
+
+What to say:
+   "These 16 integration tests verify that every component follows
+   the abstract base class interfaces. All 6 attacks implement 
+   BaseAttack, all 3 defenses implement BaseDefense, the simulator
+   implements BasePlatform, and the orchestrator's attack catalogue
+   matches the attack registry. This is the plug-in architecture
+   that makes the framework extensible."
+
+
+=====================================================================
+RUNNING A 20-SEED SWEEP (takes ~25 minutes, run beforehand)
+=====================================================================
+
+If the professor wants to see multi-seed results being generated:
+
+   python scripts/run_multi_seed.py --seeds 5 --output demo_sweep --defense-mode adaptive
+
+This runs 5 seeds (faster than 20 for a demo) and saves results to
+demo_sweep/sweep_summary.json. Each seed takes about 80 seconds.
+
+
+=====================================================================
+KEY TALKING POINTS
+=====================================================================
+
+1. "The orchestrator (run_demo.py) is the central contribution. 
+   It coordinates the simulator, attacks, detector, and defense 
+   without knowing their internals. You just change --defense-mode 
+   and everything else stays the same."
+
+2. "No one else has published a tool that runs multiple attacks 
+   against multiple defenses under identical conditions with an 
+   automated orchestrator."
+
+3. "The progression E1 -> E2 -> E3 -> E4 tells a clear story:
+   passive detection is not enough (E1), pattern-based defense 
+   helps but is fragile (E2 vs E3), and multi-feature defense 
+   recovers performance (E4)."
+
+4. "Everything is reproducible. Same random seed = same attack 
+   schedule = same results. The 20-seed sweep with statistical 
+   tests proves the results hold across different schedules."
+
+5. "The plug-in architecture means a new attack or defense can be 
+   added by implementing one Python class. No changes to the 
+   orchestrator needed."
+
+
+=====================================================================
+WHAT'S IN EACH FOLDER
+=====================================================================
+
+attacks/          - 6 attack modules (one .py each) + registry
+detector/         - feature engine, ML model, 3 defense strategies
+framework/        - abstract base classes (BaseAttack, BaseDefense, etc.)
+configs/          - YAML files for multi-seed experiment sweeps
+scripts/          - helper scripts for batch runs and statistics
+tests/            - 16 integration tests
+latex/            - paper source files (for Overleaf)
+out/              - generated results (created when you run experiments)
+
+
+=====================================================================
+TROUBLESHOOTING
+=====================================================================
+
+"No module named pymavlink":
+   pip install pymavlink
+
+"No module named sklearn":
+   pip install scikit-learn
+
+"Live plot doesn't open":
+   Add --no-live-plot to run without the window.
+   The plot still saves to out/accuracy_plot.png.
+
+"yaml not found":
+   pip install pyyaml
+
+The (.venv) must be active. If not: .venv\Scripts\Activate.ps1
