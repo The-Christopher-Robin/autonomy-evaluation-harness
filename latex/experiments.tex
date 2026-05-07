@@ -148,8 +148,8 @@ python run_demo.py --mode all \
 The randomised schedule (seed 42) produces:
 \begin{itemize}
     \item Shuffled attack order: MITM $\to$ Ping $\to$ Param $\to$ Replay $\to$ Heartbeat $\to$ Command.
-    \item Variable segment counts (5--10 per episode) with rates from 19--443~msg/s.
-    \item Inter-episode gaps: 0.6--4.2\,seconds of benign-only traffic.
+    \item Variable segment counts (5--13 per episode) with rates from 19--443~msg/s.
+    \item Inter-episode gaps: 0.35--5.5\,seconds of benign-only traffic.
     \item Micro-pauses between segments: 0.04--0.75\,seconds.
 \end{itemize}
 
@@ -233,6 +233,7 @@ Detection latency (s) & 15.6 & 19.7 \\
 The results confirm that the E3 findings hold across a wide range of randomised attack schedules.
 Block rate varies from 26.3\% (seed 9) to 99.9\% (seed 1), with most seeds falling between 30\% and 60\%.
 The high standard deviation in detection latency (19.7\,s) reflects the fact that different random schedules place the first attack at different times relative to baseline, with some schedules beginning immediately and others inserting long initial pauses.
+Note that seed 42, used for the single-seed E3 run, is intentionally outside the 1--20 sweep range so its result is an independent data point.
 The mean block rate of 44.2\% is close to the single-seed E3 value of 35.4\% (seed 42), confirming that the original result is representative of the typical case rather than an outlier.
 
 \subsubsection{Statistical Comparison: E2 vs.\ E3}

@@ -406,7 +406,7 @@ def main():
                 except ValueError:
                     pass
 
-    anomaly_threshold = args.defense_threshold if effective_mode != "none" else 0.5
+    anomaly_threshold = 0.5
     csv_path = out_dir / "detector_accuracy.csv"
     if csv_path.exists():
         with csv_path.open(encoding="utf-8") as f:

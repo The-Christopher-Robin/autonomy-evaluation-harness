@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Run E3 with multiple random seeds and collect per-run metrics.
+"""Run experiments with multiple random seeds and collect per-run metrics.
 
-Simpler alternative to batch_runner.py that avoids subprocess overhead.
-Runs each seed in-process and writes results to a JSON file.
+Launches each seed as a subprocess of run_demo.py and writes results
+to a JSON file.
 
 Usage::
 
@@ -23,7 +23,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from run_demo import build_parser, build_episode_schedule, main as _demo_main
+
+
 
 
 def run_seed(

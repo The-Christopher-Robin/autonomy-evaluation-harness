@@ -20,12 +20,13 @@ High detection accuracy without active blocking provides situational awareness b
 This gap between detection and protection shows that evaluating \emph{active} defence mechanisms alongside passive detection is necessary.
 
 \textbf{Mission-level metrics reveal what classification metrics hide.}
-E2 and E3 have similar F1 scores (0.982 vs.\ 0.904) but dramatically different mission impact ratios (0.139 vs.\ 0.978).
+Even when the Markov defence's mean F1 drops from 0.982 (E2) to 0.567 (E3, 20-seed mean), the mission impact ratio shifts from 0.139 to 0.978, a far larger proportional change.
 This confirms that traditional classification metrics alone are insufficient for CPS security evaluation. Mission-aware metrics are essential for understanding real-world impact.
 
 \textbf{Multi-feature defences outperform simple rate thresholds.}
 The rate-threshold baseline, which monitors only total message rate, can detect volumetric floods but fails to identify low-rate spoofing or injection attacks that stay below the rate threshold.
-Both the Markov and Isolation Forest defences outperform the baseline across all metrics, confirming that learned models add measurable value over simple heuristics.
+Both the Markov and Isolation Forest defences achieve higher precision than the rate baseline, confirming that learned models add measurable value in distinguishing attack traffic from normal traffic.
+The rate baseline achieves higher recall and block rate through aggressive blanket blocking, but at the cost of also blocking legitimate messages.
 This comparison addresses the concern that a trivial approach might suffice.
 
 \subsection{The Role of the Orchestrator}

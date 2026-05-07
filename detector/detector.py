@@ -190,7 +190,7 @@ def run_detector(
 
     # ---- post-run outputs ----
     _write_csv(csv_path, rows)
-    _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense, defense_mode)
+    _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense, defense_mode, defense_threshold)
 
     if defense:
         defense.write_summary()
@@ -234,7 +234,7 @@ def _write_csv(path, rows):
             w.writerow(r)
 
 
-def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense, defense_mode="none"):
+def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense, defense_mode="none", defense_threshold=0.5):
     """Three-panel PNG saved after the run completes."""
     if not rows:
         _write_empty_plot(out_dir, threshold, train_seconds)
@@ -264,7 +264,7 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     # --- Panel 2: anomaly score ---
     ax2 = axes[1]
     ax2.plot(times, anom, color="#9C27B0", linewidth=0.8, alpha=0.7, label="Anomaly Score")
-    ax2.axhline(0.3, color="orange", linestyle="--", alpha=0.7, label="Defense threshold (0.3)")
+    ax2.axhline(defense_threshold, color="orange", linestyle="--", alpha=0.7, label=f"Defense threshold ({defense_threshold})")
     ax2.axvline(train_seconds, color="gray", linestyle=":", alpha=0.5)
     ax2.set_ylabel("Score (1 = normal)")
     ax2.set_ylim(-0.05, 1.05)

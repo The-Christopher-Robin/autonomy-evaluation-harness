@@ -1,7 +1,7 @@
 """Rate-based message defense (baseline comparison).
 
 Blocks messages when the current message rate (messages per second,
-computed by the feature engine) exceeds a fixed multiple of the mean
+computed by the feature engine) exceeds a fixed multiple of the median
 rate observed during the baseline phase.  This is the simplest possible
 anomaly detector and serves as a lower-bound comparison for the Markov
 and Isolation Forest defences.
@@ -39,7 +39,7 @@ class RateDefense(BaseDefense):
         return "rate_threshold"
 
     def calibrate(self, baseline_rate: float) -> None:
-        """Set the blocking threshold from the mean baseline message rate."""
+        """Set the blocking threshold from the median baseline message rate."""
         self._baseline_rate = baseline_rate
         self._threshold = baseline_rate * self.rate_multiplier
 

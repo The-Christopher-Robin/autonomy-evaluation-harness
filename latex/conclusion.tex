@@ -4,7 +4,7 @@ This paper presented a Red-Team vs.\ Blue-Team Evaluation Framework for systemat
 The framework introduces a centralised orchestrator, a component absent from prior CPS security evaluation tools, that automates attack scheduling, defence activation, synchronised logging, and standardised metric computation.
 
 We formally defined the red-team vs.\ blue-team evaluation problem and implemented a plug-in architecture with abstract base classes for all components.
-Through four experiments, each repeated across 20 random seeds with statistical testing and a rate-threshold baseline comparison, we demonstrated that:
+Through four experiments, with randomised experiments (E3, E4) repeated across 20 seeds and validated by statistical testing and a rate-threshold baseline comparison, we demonstrated that:
 \begin{enumerate}
     \item Passive detection alone (E1) achieves high recall (99.2\%) but provides no mission protection, resulting in 62.5\% mission degradation.
     \item The Markov transition-probability defence (E2) blocks 52.4\% of static attack traffic and reduces mission impact to 13.9\%.

@@ -47,8 +47,8 @@ def main():
 
     (line_anom,) = ax2.plot([], [], color="#AA00FF", linewidth=0.8, alpha=0.85,
                             label="Anomaly Score")
-    ax2.axhline(0.3, color="#FF9100", linestyle="--", alpha=0.7,
-                label="Defense Threshold")
+    ax2.axhline(0.5, color="#FF9100", linestyle="--", alpha=0.7,
+                label="Defense Threshold (0.5)")
     ax2.set_ylabel("Score (1 = normal)", fontsize=9)
     ax2.set_ylim(-0.05, 1.05)
     ax2.set_title("Isolation Forest Anomaly Score", fontsize=10)
