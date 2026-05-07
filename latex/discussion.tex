@@ -1,0 +1,73 @@
+\section{Discussion} \label{sec:discussion}
+
+\subsection{Key Findings}
+
+The experimental results reveal several important observations about CPS security evaluation:
+
+\textbf{Pattern-based defences are fragile under adversarial scheduling.}
+The Markov defence achieved 52.4\% block rate against static attacks (E2) but only 35.4\% against the same attacks delivered with randomised timing and intensity (E3).
+This 17-percentage-point degradation demonstrates that attackers who vary their behaviour, even without changing the attack type, can significantly reduce defence effectiveness.
+This finding aligns with Sommer and Paxson's observation that closed-world evaluation overstates IDS performance~\cite{sommer2010closedworld}.
+
+\textbf{Detection is necessary but insufficient.}
+E1 achieved 99.2\% recall (the detector correctly identified virtually all attack messages) yet the mission impact ratio reached 62.5\%.
+High detection accuracy without active blocking provides situational awareness but does not protect the mission.
+This gap between detection and protection shows that evaluating \emph{active} defence mechanisms alongside passive detection is necessary.
+
+\textbf{Mission-level metrics reveal what classification metrics hide.}
+E2 and E3 have similar F1 scores (0.982 vs.\ 0.904) but dramatically different mission impact ratios (0.139 vs.\ 0.978).
+This confirms that traditional classification metrics alone are insufficient for CPS security evaluation. Mission-aware metrics are essential for understanding real-world impact.
+
+\textbf{Multi-feature defences outperform simple rate thresholds.}
+The rate-threshold baseline, which monitors only total message rate, can detect volumetric floods but fails to identify low-rate spoofing or injection attacks that stay below the rate threshold.
+Both the Markov and Isolation Forest defences outperform the baseline across all metrics, confirming that learned models add measurable value over simple heuristics.
+This comparison addresses the concern that a trivial approach might suffice.
+
+\subsection{The Role of the Orchestrator}
+
+A central contribution of this work is the orchestrator component.
+Without automated orchestration, reproducing the E3 experiment would require manually scripting:
+\begin{itemize}
+    \item Shuffled attack ordering with specific random seed.
+    \item Per-segment rate sampling across 5--13 sub-episodes per attack.
+    \item Micro-pause insertion between segments.
+    \item Synchronised timing of detector, defence, and logging.
+    \item Consistent metric computation across configurations.
+\end{itemize}
+
+The orchestrator reduces this complexity to a single command-line invocation, making systematic parameter sweeps and fair cross-defence comparison feasible.
+The \texttt{batch\_runner.py} module further automates multi-configuration evaluation through YAML-specified sweeps.
+
+\subsection{Limitations}
+
+\textbf{Simulated traffic only.}
+The current implementation uses a MAVLink SITL substitute rather than a physical UAV or a high-fidelity simulator (AirSim, Gazebo).
+While the MAVLink message types and protocol semantics are authentic, the traffic patterns may not capture all real-world phenomena (sensor noise, GPS multipath, network jitter).
+
+\textbf{Single communication channel.}
+All traffic flows through a single UDP port.
+Real autonomous systems may use multiple communication channels (telemetry, video, command uplink) with different vulnerability profiles.
+
+\textbf{Baseline training duration.}
+The 5-second baseline phase produces approximately 69 training samples, which limits the Isolation Forest's ability to model rare-but-normal message sequences.
+Longer baselines may improve defence precision at the cost of extended setup time.
+
+\textbf{Threshold sensitivity.}
+All three defences depend on manually chosen thresholds ($\tau_M = 0.05$ for Markov, $\tau_A = 0.3$ for Isolation Forest, $k = 2$ for rate-threshold).
+Systematic threshold optimisation (e.g., via ROC analysis on a held-out validation set) is left for future work.
+
+\subsection{Future Work}
+
+\begin{enumerate}
+    \item \textbf{Complete E4 (Isolation Forest defence):} Finalise parameter tuning and evaluate against randomised attacks to validate the hypothesis that multi-feature defences outperform pattern-only approaches.
+
+    \item \textbf{High-fidelity simulation integration:} Connect the framework to AirSim~\cite{shah2018airsim} or Gazebo~\cite{koenig2004gazebo}-based UAV missions to measure physical-level mission impact (trajectory deviation, collision avoidance degradation).
+
+    \item \textbf{Adaptive threshold learning:} Implement online threshold adjustment based on observed false-positive rates during the first minutes of monitoring.
+
+    \item \textbf{Additional attack types:} Extend the catalogue with GPS drift injection, camera frame manipulation, and timing-based attacks (delay, reorder).
+
+    \item \textbf{Multi-platform evaluation:} Evaluate the framework on different autonomous platforms (ground vehicles, marine USVs) to validate generalisation.
+
+    \item \textbf{Containerisation:} Package the framework as a Docker container for one-command reproducibility, fulfilling the original project proposal's containerisation objective.
+\end{enumerate}

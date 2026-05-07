@@ -1,0 +1,44 @@
+\section{Threats to Validity} \label{sec:threats}
+
+\subsection{Internal Validity}
+
+\textbf{Training-monitoring boundary effects.}
+The transition from baseline training to the monitoring phase introduces a potential confound: the first few messages after training may receive artificially high anomaly scores simply because the sliding-window statistics are still stabilising.
+We mitigate this by reporting metrics only from the monitoring phase and by using a sufficiently large moving-average window (100 messages) to dampen transient effects.
+
+\textbf{Threshold selection.}
+Defence effectiveness depends on chosen thresholds ($\tau_M = 0.05$, $\tau_A = 0.3$).
+Different threshold values would produce different block rates and false-positive rates.
+We report results for a single, documented configuration. Future work should conduct sensitivity analysis across threshold ranges.
+
+\textbf{Measurement timing.}
+Attack durations and inter-arrival times depend on Python thread scheduling and host system load.
+Measured durations may deviate slightly from configured values (e.g., 5.38\,s observed vs.\ 5.0\,s configured).
+We account for this by using actual wall-clock timestamps from logs rather than configured values in all metric computations.
+
+\subsection{External Validity}
+
+\textbf{Simulated vs.\ real traffic.}
+The MAVLink SITL simulator produces a simplified traffic profile (four message types at regular intervals).
+Real autonomous platforms exhibit more complex patterns including bursts during manoeuvres, variable-rate GPS updates, and multi-component communication.
+Results may not directly transfer to physical deployments without validation on real hardware.
+
+\textbf{Attack realism.}
+The implemented attacks send well-formed MAVLink packets at elevated rates from known rogue source IDs.
+Sophisticated attackers may use more subtle injection strategies (e.g., gradual drift, authenticated channels, adversarial sensor spoofing~\cite{sun2020lidar}, or adversarial examples~\cite{goodfellow2015adversarial, he2023advml} targeting ML models).
+Our attack catalogue represents a starting point, and additional threat models should be evaluated.
+
+\textbf{Single protocol.}
+All experiments use MAVLink over UDP.
+Autonomous systems using other protocols (DDS, ROS2, CAN bus) may exhibit different vulnerability profiles and require protocol-specific feature engineering.
+
+\subsection{Construct Validity}
+
+\textbf{Metric definitions.}
+Our ``mission impact ratio'' (fraction of monitoring time with accuracy $<$ 0.9) is a proxy for true mission degradation.
+A more precise metric would measure physical outcomes (trajectory deviation, task completion time), which requires integration with a physics-based simulator.
+
+\textbf{Moving-average window size.}
+The choice of window size (100 messages for static, 160 for randomised) affects reported accuracy values.
+Smaller windows respond faster to attacks but exhibit more noise, while larger windows smooth out short bursts.
+We report the window size explicitly to enable fair comparison with future work using different parameters.

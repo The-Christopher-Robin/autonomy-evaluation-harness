@@ -71,10 +71,11 @@ def build_parser():
     p.add_argument("--mode", choices=["all", "baseline", "attacks"],
                    default="all")
 
-    p.add_argument("--defense-mode", choices=["none", "markov", "adaptive"],
+    p.add_argument("--defense-mode", choices=["none", "markov", "adaptive", "rate"],
                    default="none",
                    help="Defense strategy: none, markov (transition-probability blocking), "
-                        "or adaptive (Isolation Forest anomaly-score blocking).")
+                        "adaptive (Isolation Forest anomaly-score blocking), "
+                        "or rate (simple rate-threshold baseline).")
     p.add_argument("--defense-threshold", type=float, default=0.3,
                    help="Score/probability threshold below which messages are blocked.")
 
@@ -247,6 +248,9 @@ def main():
 
     effective_mode = args.defense_mode
 
+    if effective_mode == "rate" and args.defense_threshold == 0.3:
+        args.defense_threshold = 2.0
+
     episodes, inter_gaps, micro_per = build_episode_schedule(args)
 
     det_window = args.window
@@ -320,6 +324,7 @@ def main():
         "none": "No defense (detection only).",
         "markov": f"Markov defense enabled (transition-prob threshold = {args.defense_threshold}).",
         "adaptive": f"Adaptive ML defence enabled (anomaly-score threshold = {args.defense_threshold}).",
+        "rate": f"Rate-based baseline defence enabled (multiplier = {args.defense_threshold}).",
     }
     log(mode_desc.get(effective_mode, f"Defense mode: {effective_mode}"))
     detector_thread.start()
@@ -418,7 +423,8 @@ def main():
                 except (ValueError, KeyError):
                     pass
 
-    defense_csv_name = "defense_markov.csv" if effective_mode == "markov" else "defense_adaptive.csv"
+    _csv_map = {"markov": "defense_markov.csv", "adaptive": "defense_adaptive.csv", "rate": "defense_rate.csv"}
+    defense_csv_name = _csv_map.get(effective_mode, "defense_adaptive.csv")
     defense_csv = out_dir / defense_csv_name
     if effective_mode != "none" and defense_csv.exists():
         with defense_csv.open(encoding="utf-8") as f:
@@ -482,7 +488,12 @@ def main():
             log(f"Visual grounding analysis skipped: {e}")
 
     if effective_mode != "none":
-        model_label = "Markov transition model" if effective_mode == "markov" else "Isolation Forest (unsupervised)"
+        _model_labels = {
+            "markov": "Markov transition model",
+            "adaptive": "Isolation Forest (unsupervised)",
+            "rate": "Rate-threshold baseline",
+        }
+        model_label = _model_labels.get(effective_mode, effective_mode)
         log(f"=== Defence Report ({effective_mode}) ===")
         log(f"  Model             : {model_label}")
         log(f"  Threshold         : {args.defense_threshold}")
@@ -496,8 +507,8 @@ def main():
         bs = metrics.get("blocked_by_src_system", {})
         if bs:
             log(f"  Blocked by source : {bs}")
-        csv_name = "defense_markov.csv" if effective_mode == "markov" else "defense_adaptive.csv"
-        log(f"  Defence log       : out/{csv_name}")
+        _rpt_csv = {"markov": "defense_markov.csv", "adaptive": "defense_adaptive.csv", "rate": "defense_rate.csv"}
+        log(f"  Defence log       : out/{_rpt_csv.get(effective_mode, 'defense_adaptive.csv')}")
         log("  Defence summary   : out/defense_summary.json")
 
     log("Demo complete.")

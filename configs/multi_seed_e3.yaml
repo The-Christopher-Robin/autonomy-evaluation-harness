@@ -1,0 +1,42 @@
+# 20-seed E3 sweep: randomized attacks with Markov defense
+# Each run uses a different seed so the attack schedule varies.
+#
+# Usage:
+#   python batch_runner.py --config configs/multi_seed_e3.yaml
+#
+# Results are written to batch_results/ by default.
+
+defaults:
+  baseline_seconds: 5
+  attack_seconds: 5
+  attack_rate: 200
+  sim_rate: 10
+  threshold: 0.9
+  window: 100
+  mode: all
+  defense_mode: markov
+  defense_threshold: 0.05
+  randomize_attacks: true
+
+parameters:
+  random_seed:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20

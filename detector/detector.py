@@ -21,6 +21,7 @@ from .feature_engine import FeatureEngine, FEATURE_NAMES
 from .ml_model import AnomalyDetector
 from .adaptive_defense import AdaptiveDefense
 from .markov_defense import MarkovDefense
+from .rate_defense import RateDefense
 
 
 class MarkovModel:
@@ -77,6 +78,8 @@ def run_detector(
         defense = AdaptiveDefense(score_threshold=defense_threshold, out_dir=out_dir)
     elif defense_mode == "markov":
         defense = MarkovDefense(prob_threshold=defense_threshold, out_dir=out_dir)
+    elif defense_mode == "rate":
+        defense = RateDefense(rate_multiplier=defense_threshold, out_dir=out_dir)
     else:
         defense = None
 
@@ -126,6 +129,10 @@ def run_detector(
             if not anomaly.is_trained and baseline_feats:
                 baseline_count = len(baseline_feats)
                 anomaly.fit(baseline_feats)
+                if defense_mode == "rate" and defense is not None:
+                    rates = sorted(f[0] for f in baseline_feats)
+                    median_rate = rates[len(rates) // 2]
+                    defense.calibrate(median_rate)
                 baseline_feats = []
                 _append_live(live_path, {"event": "training_end", "t": round(elapsed, 3)})
 
@@ -133,7 +140,12 @@ def run_detector(
 
             blocked = False
             if defense is not None:
-                score = m_prob if defense_mode == "markov" else a_score
+                if defense_mode == "markov":
+                    score = m_prob
+                elif defense_mode == "rate":
+                    score = feat_vec[0]  # msg_rate from feature engine
+                else:
+                    score = a_score
                 blocked = defense.evaluate(now, msg_id, src, score)
 
             accuracy = sum(acc_window) / len(acc_window) if acc_window else 1.0
@@ -263,7 +275,8 @@ def _write_enhanced_plot(out_dir, rows, start, threshold, train_seconds, defense
     # --- Panel 3: defense timeline ---
     ax3 = axes[2]
     if defense and defense.blocked > 0:
-        csv_name = "defense_markov.csv" if defense_mode == "markov" else "defense_adaptive.csv"
+        _csv_map = {"markov": "defense_markov.csv", "adaptive": "defense_adaptive.csv", "rate": "defense_rate.csv"}
+        csv_name = _csv_map.get(defense_mode, "defense_adaptive.csv")
         log_path = out_dir / csv_name
         if log_path.exists():
             block_times, cumulative = [], []

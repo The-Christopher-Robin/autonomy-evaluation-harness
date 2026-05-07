@@ -1,0 +1,110 @@
+\begin{figure*}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.2cm and 1.8cm,
+    box/.style={draw, rounded corners, minimum width=2.4cm, minimum height=0.9cm, align=center, font=\small},
+    bigbox/.style={draw, rounded corners, minimum width=3.2cm, minimum height=0.9cm, align=center, font=\small},
+    orch/.style={draw, rounded corners, fill=gray!15, minimum width=4cm, minimum height=1cm, align=center, font=\small\bfseries},
+    redbox/.style={draw, rounded corners, fill=red!10, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\scriptsize},
+    bluebox/.style={draw, rounded corners, fill=blue!10, minimum width=2.4cm, minimum height=0.8cm, align=center, font=\scriptsize},
+    simbox/.style={draw, rounded corners, fill=green!10, minimum width=3cm, minimum height=0.9cm, align=center, font=\small},
+    outbox/.style={draw, rounded corners, fill=yellow!12, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\scriptsize},
+    arr/.style={-{Stealth[length=2.5mm]}, thick},
+    darr/.style={-{Stealth[length=2.5mm]}, thick, dashed},
+    label/.style={font=\scriptsize\itshape, text=gray!70!black},
+]
+
+% ---- Orchestrator (top) ----
+\node[orch] (orch) {Orchestrator\\[-1pt]\texttt{\scriptsize run\_demo.py}};
+
+% ---- Simulator (left) ----
+\node[simbox, below left=1.6cm and 3.5cm of orch] (sim) {Platform Simulator\\[-1pt]\texttt{\scriptsize sitl\_sim.py}};
+
+% ---- Red Team (left column) ----
+\node[redbox, below=2.8cm of sim, xshift=-1.2cm] (atk1) {Heartbeat\\Flood};
+\node[redbox, right=0.3cm of atk1] (atk2) {Ping\\Flood};
+\node[redbox, right=0.3cm of atk2] (atk3) {Param-Req\\Flood};
+\node[redbox, below=0.3cm of atk1] (atk4) {MITM\\Spoof};
+\node[redbox, right=0.3cm of atk4] (atk5) {Replay\\Pattern};
+\node[redbox, right=0.3cm of atk5] (atk6) {Command\\Injection};
+
+% Red team container
+\begin{scope}[on background layer]
+\node[draw=red!60, fill=red!3, rounded corners, fit=(atk1)(atk2)(atk3)(atk4)(atk5)(atk6),
+      inner sep=0.35cm, label={[font=\small\bfseries, text=red!70!black]above:Red Team (Attacks)}] (redgroup) {};
+\end{scope}
+
+% ---- UDP Channel (center) ----
+\node[draw, fill=orange!8, rounded corners, minimum width=1.6cm, minimum height=3.2cm,
+      right=2.2cm of redgroup, align=center, font=\small] (udp) {UDP\\Port\\14550\\[-2pt]\scriptsize(MAVLink)};
+
+% ---- Blue Team (right) ----
+\node[bluebox, right=2.2cm of udp, yshift=1.2cm, minimum width=2.8cm] (feat) {Feature Engine\\[-1pt]\scriptsize 11-dim vector};
+\node[bluebox, below=0.4cm of feat, minimum width=2.8cm] (iforest) {Isolation Forest\\[-1pt]\scriptsize anomaly score};
+\node[bluebox, below=0.4cm of iforest, minimum width=2.8cm] (markov) {Markov Model\\[-1pt]\scriptsize transition prob};
+\node[bluebox, below=0.4cm of markov, minimum width=2.8cm] (defense) {Defence Module\\[-1pt]\scriptsize block / pass};
+
+% Blue team container
+\begin{scope}[on background layer]
+\node[draw=blue!60, fill=blue!3, rounded corners, fit=(feat)(iforest)(markov)(defense),
+      inner sep=0.35cm, label={[font=\small\bfseries, text=blue!70!black]above:Blue Team (Detector + Defence)}] (bluegroup) {};
+\end{scope}
+
+% ---- Outputs (far right) ----
+\node[outbox, right=1.8cm of feat, yshift=-0.2cm] (metrics) {Metrics JSON\\[-1pt]\scriptsize P, R, F1, latency};
+\node[outbox, below=0.3cm of metrics] (plot) {3-Panel Graph\\[-1pt]\scriptsize accuracy, score, blocks};
+\node[outbox, below=0.3cm of plot] (logs) {CSV Logs\\[-1pt]\scriptsize defence, alerts};
+
+% Output container
+\begin{scope}[on background layer]
+\node[draw=yellow!70!black, fill=yellow!4, rounded corners, fit=(metrics)(plot)(logs),
+      inner sep=0.3cm, label={[font=\small\bfseries, text=yellow!50!black]above:Outputs}] (outgroup) {};
+\end{scope}
+
+% ---- Arrows ----
+
+% Orchestrator controls
+\draw[arr] (orch.south) -- ++(0,-0.4) -| node[label, pos=0.25, above]{starts / stops} (sim.north);
+\draw[arr] (orch.south) -- ++(0,-0.4) -| (redgroup.north);
+\draw[arr] (orch.south) -- ++(0,-0.4) -| (bluegroup.north);
+\draw[darr] (orch.south) -- ++(0,-0.4) -| node[label, pos=0.25, above]{collects} (outgroup.north);
+
+% Simulator to UDP
+\draw[arr, green!50!black] (sim.south) |- node[label, pos=0.7, above]{\scriptsize normal traffic} (udp.west |- sim.south);
+% Adjust: sim sends to udp
+\draw[arr, green!50!black] (sim.east) -- ++(0.5,0) |- (udp.north west);
+
+% Attacks to UDP
+\draw[arr, red!60!black] (redgroup.east) -- node[label, above]{\scriptsize malicious traffic} (udp.west);
+
+% UDP to Blue Team
+\draw[arr] (udp.east) -- node[label, above]{\scriptsize mixed stream} (bluegroup.west |- udp.east);
+
+% Blue team internal flow
+\draw[arr] (feat.south) -- (iforest.north);
+\draw[arr] (iforest.south) -- (markov.north);
+\draw[arr] (markov.south) -- (defense.north);
+
+% Blue team to outputs
+\draw[arr] (defense.east) -| ++(0.6, 0) |- (outgroup.west |- plot.west);
+
+% ---- Step labels ----
+\node[font=\footnotesize\bfseries, fill=white, draw=gray, circle, inner sep=1.5pt] at ([xshift=-0.5cm, yshift=0.3cm]sim.north west) {1};
+\node[font=\footnotesize\bfseries, fill=white, draw=gray, circle, inner sep=1.5pt] at ([xshift=-0.5cm, yshift=0.3cm]redgroup.north west) {2};
+\node[font=\footnotesize\bfseries, fill=white, draw=gray, circle, inner sep=1.5pt] at ([xshift=-0.3cm]udp.north west) {3};
+\node[font=\footnotesize\bfseries, fill=white, draw=gray, circle, inner sep=1.5pt] at ([xshift=-0.5cm, yshift=0.3cm]bluegroup.north west) {4};
+\node[font=\footnotesize\bfseries, fill=white, draw=gray, circle, inner sep=1.5pt] at ([xshift=-0.5cm, yshift=0.3cm]outgroup.north west) {5};
+
+\end{tikzpicture}%
+}
+
+\caption{Framework architecture overview.
+\textbf{Step~1:} The orchestrator launches the platform simulator, which emits normal MAVLink traffic.
+\textbf{Step~2:} Red-team attack modules inject malicious traffic into the same UDP channel.
+\textbf{Step~3:} Normal and malicious packets are mixed on UDP port~14550.
+\textbf{Step~4:} The blue-team pipeline extracts 11 features per message, scores each message with the Isolation Forest and Markov model, and the defence module decides to block or pass.
+\textbf{Step~5:} The orchestrator collects all results into standardised metrics, graphs, and logs.
+The orchestrator (top) coordinates all components without knowing their internal implementation.}
+\label{fig:framework}
+\end{figure*}

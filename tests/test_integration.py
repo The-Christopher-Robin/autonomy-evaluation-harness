@@ -16,6 +16,7 @@ from framework.base import BaseAttack, BaseDefense, BasePlatform
 from attacks import ATTACK_REGISTRY
 from detector.markov_defense import MarkovDefense
 from detector.adaptive_defense import AdaptiveDefense
+from detector.rate_defense import RateDefense
 from sitl_sim import SITLSimulator
 
 
@@ -54,6 +55,9 @@ class TestDefenseInterface(unittest.TestCase):
     def test_adaptive_inherits_base(self):
         self.assertTrue(issubclass(AdaptiveDefense, BaseDefense))
 
+    def test_rate_inherits_base(self):
+        self.assertTrue(issubclass(RateDefense, BaseDefense))
+
     def _check_evaluate(self, defense):
         blocked = defense.evaluate(
             timestamp=1.0, msg_id=0, src=1, anomaly_score=0.5,
@@ -68,10 +72,24 @@ class TestDefenseInterface(unittest.TestCase):
         d = AdaptiveDefense(score_threshold=0.3, out_dir="out")
         self._check_evaluate(d)
 
+    def test_rate_evaluate_signature(self):
+        d = RateDefense(rate_multiplier=2.0, out_dir="out")
+        d.calibrate(10.0)
+        self._check_evaluate(d)
+
+    def test_rate_calibrate_and_block(self):
+        d = RateDefense(rate_multiplier=2.0, out_dir="out")
+        d.calibrate(10.0)
+        blocked = d.evaluate(1.0, 0, 1, anomaly_score=25.0)
+        self.assertTrue(blocked)
+        passed = d.evaluate(2.0, 0, 1, anomaly_score=5.0)
+        self.assertFalse(passed)
+
     def test_summary_returns_dict(self):
         for cls, kwargs in [
             (MarkovDefense, {"prob_threshold": 0.05, "out_dir": "out"}),
             (AdaptiveDefense, {"score_threshold": 0.3, "out_dir": "out"}),
+            (RateDefense, {"rate_multiplier": 2.0, "out_dir": "out"}),
         ]:
             d = cls(**kwargs)
             s = d.summary()
@@ -80,6 +98,7 @@ class TestDefenseInterface(unittest.TestCase):
     def test_name_property(self):
         self.assertIsInstance(MarkovDefense(out_dir="out").name, str)
         self.assertIsInstance(AdaptiveDefense(out_dir="out").name, str)
+        self.assertIsInstance(RateDefense(out_dir="out").name, str)
 
 
 class TestSimulatorInterface(unittest.TestCase):

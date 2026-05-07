@@ -1,0 +1,21 @@
+# 20-run E2 config: static attacks with Markov defense (fixed seed)
+# Used as the comparison baseline for the Mann-Whitney U test against E3.
+#
+# Usage:
+#   python batch_runner.py --config configs/multi_seed_e2.yaml --repeat 20
+
+defaults:
+  baseline_seconds: 5
+  attack_seconds: 5
+  attack_rate: 200
+  sim_rate: 10
+  threshold: 0.9
+  window: 100
+  mode: all
+  defense_mode: markov
+  defense_threshold: 0.05
+  random_seed: 42
+
+parameters:
+  randomize_attacks:
+    - false

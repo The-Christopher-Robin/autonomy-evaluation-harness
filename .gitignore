@@ -5,7 +5,8 @@ env/
 
 # Output / generated artifacts (regenerable via run_demo.py)
 out/
-batch_results/
+batch_results*/
+rate_results*/
 *.log
 
 # Python
@@ -23,7 +24,6 @@ Thumbs.db
 # Local documents (not part of the codebase)
 *.pdf
 REPORT_NOTES.md
-Overleaf/
 
 # Jupyter
 .ipynb_checkpoints/

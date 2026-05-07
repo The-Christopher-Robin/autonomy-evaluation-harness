@@ -1,0 +1,115 @@
+\section{Related Work} \label{sec:related}
+
+This section surveys existing research across four relevant areas: cyber-physical system (CPS) attack analysis, fault-injection frameworks, intrusion detection for autonomous systems, and reproducible evaluation benchmarks.
+For each area we summarise the most relevant contributions, highlight their limitations relative to our goals, and conclude with a structured comparison.
+
+\subsection{CPS Attack Analysis}
+
+Shoukry et al.~\cite{shoukry2017safecontrol} formalised secure state estimation under sensor attacks using satisfiability modulo theory, demonstrating that GPS spoofing can defeat Kalman-filter-based localisation in ground vehicles.
+Their work provides a theoretical foundation but evaluates only a single attack type (sensor corruption) against a single estimator, with no orchestration or defence comparison.
+
+Mo and Sinopoli~\cite{mo2009replay} analysed replay attacks on linear dynamical systems and proposed a $\chi^2$-detector countermeasure.
+While foundational, the evaluation is purely analytical and lacks implementation on actual (or simulated) autonomous platforms.
+
+Quarta et al.~\cite{quarta2017industrialrobot} performed a practical security analysis of an industrial robot controller, demonstrating command injection and firmware manipulation.
+Their approach is platform-specific (ABB IRB 140) and does not generalise to multi-platform or multi-attack evaluation.
+
+Mekdad et al.~\cite{mekdad2023uavsecurity} provide a broad survey of UAV security and privacy issues, systematically classifying threats at four levels: hardware, software, communication, and sensor.
+The survey catalogues vulnerabilities and countermeasures but does not provide an evaluation framework or runnable code.
+
+Cui and Stolfo~\cite{cui2010embedded} performed a wide-area scan of embedded network devices and quantified the prevalence of default credentials and unpatched firmware in deployed systems.
+Their results confirm the scale of embedded-device insecurity but focus on network-accessible devices rather than protocol-level attacks on autonomous platforms.
+
+Sun et al.~\cite{sun2020lidar} demonstrated a black-box adversarial sensor attack against LiDAR-based perception in autonomous driving, achieving approximately 80\% success rate across target models.
+They proposed countermeasures (CARLO and SVF) but evaluated only a single sensor modality without multi-attack orchestration.
+
+\textbf{Limitation:} These works evaluate individual attack vectors in isolation without providing reusable infrastructure for systematic multi-attack comparison.
+
+\subsection{Fault-Injection Frameworks}
+
+Jha et al.~\cite{jha2019drivefi} proposed DriveFI, a machine-learning-based fault-injection engine for autonomous vehicles that uses Bayesian reasoning to identify safety-critical faults.
+DriveFI found 561 safety-critical faults in under four hours on NVIDIA and Baidu AV stacks, but it targets sensor and actuator faults rather than \emph{adversarial protocol-level attacks}, and includes no defence evaluation mechanism.
+
+Natella et al.~\cite{natella2016faultinjection} provided a broad survey of software fault injection techniques, establishing a taxonomy of injection points, fault models, and assessment criteria.
+Their contribution is taxonomic. No executable adversarial-attack framework is provided, and the focus remains on accidental failures rather than intentional attacks.
+
+Shah et al.~\cite{shah2018airsim} developed AirSim, a high-fidelity simulator for autonomous vehicles that enables hardware-in-the-loop testing.
+While AirSim provides rich sensor emulation, it does not include built-in attack injection or defence evaluation capabilities.
+
+\textbf{Limitation:} Fault-injection tools model accidental failures rather than adversarial attacks and do not integrate defence mechanisms or security-specific metrics (detection rate, false positives).
+
+\subsection{Intrusion Detection for Autonomous Systems}
+
+Nguyen et al.~\cite{nguyen2021fliot} surveyed federated learning for IoT systems, proposing distributed model training across edge devices for intrusion detection.
+While effective for networked IoT, the approach was not evaluated on real-time autonomous platform traffic with mission-level metrics.
+
+Alshamrani et al.~\cite{alshamrani2019apt} surveyed advanced persistent threat (APT) techniques, solutions, and challenges, proposing a defence-in-depth approach across different APT stages.
+Their evaluation framework uses static datasets without live attack injection or defence comparison.
+
+Sommer and Paxson~\cite{sommer2010closedworld} critically examined the ``closed world'' assumption in network intrusion detection, arguing that evaluation on curated datasets overestimates real-world performance.
+This motivates our approach of evaluating defences under \emph{live} attack traffic with controlled but realistic timing.
+
+Bartocci et al.~\cite{bartocci2018specmonitoring} surveyed specification-based monitoring for CPS, covering temporal logic specifications and runtime verification.
+Havelund et al.~\cite{havelund2019rv} further reviewed runtime verification techniques, drawing on two decades of experience with specification mining, predictive analysis, and fault protection.
+Both approaches require formal specifications of correct behaviour, which may be unavailable for learned controllers.
+
+Mitchell and Chen~\cite{mitchell2014wireless} surveyed intrusion detection techniques across wireless network types (WLANs, WSNs, ad hoc networks, CPS), classifying approaches by detection technique and trust model.
+Their taxonomy does not cover protocol-specific attacks (e.g., MAVLink) or mission-level impact assessment.
+
+He et al.~\cite{he2023advml} surveyed adversarial machine learning attacks against network intrusion detection systems, documenting evasion techniques that degrade ML-based detectors.
+Their analysis motivates the need for defences that are tested under adversarial conditions rather than static datasets.
+
+\textbf{Limitation:} IDS research typically evaluates classifiers on pre-collected datasets rather than under live, orchestrated attack scenarios with mission-context awareness.
+
+\subsection{Reproducible Evaluation Benchmarks}
+
+Collberg and Proebsting~\cite{collberg2016repeatability} demonstrated that fewer than 50\% of published systems-research artifacts can be successfully built and re-executed, motivating the need for containerised, self-contained evaluation pipelines.
+
+Hadi et al.~\cite{hadi2025uavnidd} introduced UAV-NIDD, a dynamic dataset for cybersecurity and intrusion detection in UAV networks collected from a physical testbed with ten attack types.
+The dataset provides rich features (including MAVLink-specific fields) but offers no executable evaluation pipeline, so users must implement their own detection and evaluation code.
+
+Pendlebury et al.~\cite{pendlebury2019tesseract} developed TESSERACT, a framework for eliminating temporal and spatial bias in malware classification evaluation.
+Their work establishes principled evaluation protocols but targets generic malware traffic rather than CPS-specific, mission-aware evaluation.
+
+Apruzzese et al.~\cite{apruzzese2023sok} conducted a systematisation of knowledge on ML-based network intrusion detection, identifying common evaluation pitfalls including unrealistic dataset splitting, feature leakage, and missing adversarial testing.
+Their analysis motivates but does not implement a multi-attack evaluation framework.
+
+Pant et al.~\cite{pant2024mixedsense} proposed MIXED-SENSE, a mixed-reality sensor emulation framework that tests UAV resilience against false data injection attacks using Gazebo and motion-capture systems.
+While MIXED-SENSE enables realistic attack emulation, it focuses on sensor-level FDI attacks and does not provide multi-defence comparison or protocol-level attack diversity.
+
+\textbf{Limitation:} Existing benchmarks either target generic network traffic (not CPS), provide datasets without runnable pipelines, or address evaluation methodology without providing tools.
+
+\subsection{Comparison with Existing Approaches}
+
+Table~\ref{tab:comparison} summarises how our framework compares with the most relevant prior work across five dimensions critical for systematic security evaluation of autonomous platforms.
+
+\begin{table}[t]
+\centering
+\caption{Comparison of our framework with existing approaches across five evaluation dimensions.}
+\label{tab:comparison}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Approach} & \rotatebox{65}{\textbf{Multi-attack}} & \rotatebox{65}{\textbf{Multi-defence}} & \rotatebox{65}{\textbf{CPS-specific}} & \rotatebox{65}{\textbf{Runnable code}} & \rotatebox{65}{\textbf{Mission metrics}} \\
+\midrule
+DriveFI~\cite{jha2019drivefi}              & \checkmark & --         & \checkmark & \checkmark & -- \\
+UAV-NIDD~\cite{hadi2025uavnidd}            & \checkmark & --         & \checkmark & --         & -- \\
+TESSERACT~\cite{pendlebury2019tesseract}    & \checkmark & \checkmark & --         & \checkmark & -- \\
+SoK-NIDS~\cite{apruzzese2023sok}           & \checkmark & \checkmark & --         & --         & -- \\
+MIXED-SENSE~\cite{pant2024mixedsense}      & --         & \checkmark & \checkmark & \checkmark & Partial \\
+AirSim~\cite{shah2018airsim}               & --         & --         & \checkmark & \checkmark & -- \\
+\midrule
+\textbf{Ours}                              & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Multi-attack} indicates support for multiple heterogeneous attack types within a single evaluation run.
+\textbf{Multi-defence} indicates the ability to evaluate more than one defence strategy under identical conditions.
+\textbf{CPS-specific} means the framework targets cyber-physical autonomous platforms (not generic network traffic).
+\textbf{Runnable code} indicates that executable evaluation code is publicly available.
+\textbf{Mission metrics} captures whether the evaluation includes mission-level impact assessment (not only classification accuracy).
+
+Our framework is the only approach that satisfies all five criteria simultaneously.
+The key differentiator is the \emph{centralised orchestrator}: a component that automates attack scheduling, defence activation, synchronised logging, and metric computation within a live simulation loop.
+No prior work provides this level of automation for CPS security evaluation.

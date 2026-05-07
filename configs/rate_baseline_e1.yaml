@@ -1,0 +1,15 @@
+# Rate-baseline comparison for E1: static attacks, rate defense (no Markov/IF)
+#
+# Usage:
+#   python run_demo.py --config configs/rate_baseline_e1.yaml --no-live-plot
+
+baseline_seconds: 5
+attack_seconds: 5
+attack_rate: 200
+sim_rate: 10
+threshold: 0.9
+window: 100
+mode: all
+defense_mode: rate
+defense_threshold: 2.0
+random_seed: 42
