@@ -45,3 +45,7 @@ REPORT_NOTES.md
 *.nav
 *.snm
 *.vrb
+
+# Paper sources are managed in Overleaf, not the code repo
+latex/
+DEMO_FOR_PROF.txt
